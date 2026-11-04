@@ -5179,7 +5179,7 @@ function openPartialQuestionnaire(saved, missingFields){
         PROG = newProg;
         renderPlan(newProg);
         showScreen('screen-plan');
-        setTimeout(function(){ toast('🔄 Programme mis à jour ✓'); }, 600);
+        setTimeout(function(){ toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓'); }, 600);
         return;
       } catch(e) {
         // Régénération échouée : restaurer le backup si disponible, sinon garder l'ancien
@@ -5190,6 +5190,7 @@ function openPartialQuestionnaire(saved, missingFields){
         // Mettre quand même à jour le numéro de version pour ne pas boucler
         saved.generatorVersion = GENERATOR_VERSION;
         saveProg(saved);
+        setTimeout(function(){ toast('⚠️ Regen échouée: '+e.message); }, 600);
       }
     }
     renderPlan(saved);
