@@ -3718,8 +3718,10 @@ function buildProgressChart(weeks){
     ctx.fillText(sMin.toFixed(1), W-PAD_R, PAD_T+cH+12);
   }
 
-  // === Tendance lissée : moyenne mobile sur les points visibles uniquement ===
-  if(finalEntries.length >= 3){
+  // === Tendance lissée : calculée uniquement sur les séances planifiées (non-free) ===
+  // Les courses libres sont affichées mais n'influencent pas la tendance
+  var plannedEntries = finalEntries.map(function(e,i){return{e:e,i:i};}).filter(function(ei){return !ei.e.free && (ei.e.km>0||ei.e.speed>0);});
+  if(plannedEntries.length >= 2){
     function smArr(arr, hw){
       return arr.map(function(_,i){
         var s=Math.max(0,i-hw), e2=Math.min(arr.length-1,i+hw), sum=0, cnt=0;
@@ -3727,35 +3729,35 @@ function buildProgressChart(weeks){
         return sum/cnt;
       });
     }
-    var hw2 = Math.max(1, Math.round(finalEntries.length/5));
-    var kmsAll = finalEntries.map(function(e){return e.km||0;});
-    var spdsAll = finalEntries.map(function(e){return e.speed||0;});
-    // Interpoler vitesses nulles
-    spdsAll = spdsAll.map(function(v,i){
+    var hw2 = Math.max(1, Math.round(plannedEntries.length/4));
+    var pKms = plannedEntries.map(function(ei){return ei.e.km||0;});
+    var pSpds = plannedEntries.map(function(ei){return ei.e.speed||0;});
+    // Interpoler vitesses nulles dans les séances planifiées
+    pSpds = pSpds.map(function(v,i){
       if(v>0) return v;
       var prev=null,next=null;
-      for(var j=i-1;j>=0;j--) if(spdsAll[j]>0){prev=spdsAll[j];break;}
-      for(var j=i+1;j<spdsAll.length;j++) if(spdsAll[j]>0){next=spdsAll[j];break;}
+      for(var j=i-1;j>=0;j--) if(pSpds[j]>0){prev=pSpds[j];break;}
+      for(var j=i+1;j<pSpds.length;j++) if(pSpds[j]>0){next=pSpds[j];break;}
       return (prev&&next)?(prev+next)/2:(prev||next||0);
     });
-    var smoothKm2 = smArr(kmsAll, hw2);
-    var smoothSpd2 = smArr(spdsAll, hw2);
+    var smoothKm2 = smArr(pKms, hw2);
+    var smoothSpd2 = smArr(pSpds, hw2);
 
-    // Tendance distance (bleu pointillé) — uniquement sur les points visibles
+    // Tendance distance (bleu pointillé) — tracée entre séances planifiées uniquement
     ctx.save();
     ctx.beginPath();
     ctx.setLineDash([6,4]);
     ctx.strokeStyle='#3d7be0';
     ctx.lineWidth=2;
     ctx.lineJoin='round';
-    finalEntries.forEach(function(e,i){
-      var x=xOf(i), y=yOfKm(smoothKm2[i]);
-      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    plannedEntries.forEach(function(ei,pi){
+      var x=xOf(ei.i), y=yOfKm(smoothKm2[pi]);
+      pi===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     });
     ctx.stroke();
     ctx.restore();
 
-    // Tendance vitesse (rouge pointillé) — uniquement sur les points visibles
+    // Tendance vitesse (rouge pointillé) — tracée entre séances planifiées uniquement
     if(hasSpd){
       ctx.save();
       ctx.beginPath();
@@ -3763,9 +3765,9 @@ function buildProgressChart(weeks){
       ctx.strokeStyle='#c0392b';
       ctx.lineWidth=2;
       ctx.lineJoin='round';
-      finalEntries.forEach(function(e,i){
-        var x=xOf(i), y=yOfSpd(smoothSpd2[i]);
-        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      plannedEntries.forEach(function(ei,pi){
+        var x=xOf(ei.i), y=yOfSpd(smoothSpd2[pi]);
+        pi===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
       });
       ctx.stroke();
       ctx.restore();
