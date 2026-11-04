@@ -4970,7 +4970,23 @@ function loadFile(e){
       saveProg(PROG);saveDone();saveTrain();saveRaceHistory();
       // Restaurer intermediateRace dans Q
       if(PROG.intermediateRace) Q.intermediateRace=PROG.intermediateRace;
-      renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
+      // Régénérer si version obsolète
+      if(PROG.generatorVersion !== GENERATOR_VERSION){
+        try {
+          restoreQFromSaved(PROG);
+          if(!Q.dist || !Q.raceDate || !Q.speed) throw new Error('missing_fields');
+          const newProg = generateProgram();
+          if(!newProg || !newProg.weeks || newProg.weeks.length === 0) throw new Error('empty_prog');
+          newProg.generatorVersion = GENERATOR_VERSION;
+          saveProg(newProg);
+          PROG = newProg;
+          renderPlan(newProg);showScreen('screen-plan');toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓');
+        } catch(e) {
+          renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
+        }
+      } else {
+        renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
+      }
     }catch(err){alert('Fichier invalide.');}
   };reader.readAsText(file);
 }
