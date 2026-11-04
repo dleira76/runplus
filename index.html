@@ -429,6 +429,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
         <span id="pref-pace-label">Afficher les vitesses en <strong>min/km</strong> <span style="opacity:.6">(ex : 06:00/km au lieu de 10 km/h)</span></span>
       </label>
       <button class="btn-primary" onclick="qNext(0)">Suivant →</button>
+      <button class="btn-secondary" style="margin-top:10px;width:100%;padding:12px;border:1.5px solid var(--fg-muted);border-radius:12px;background:transparent;color:var(--fg-muted);font-size:14px;cursor:pointer" onclick="triggerLoad()">⬆ Charger une sauvegarde</button>
     </div>
 
     <!-- Q2 — Profil coureur -->
@@ -825,6 +826,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
         </div>
         <div style="display:flex;gap:8px">
           <button onclick="peCancel()" style="flex:1;padding:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">Annuler</button>
+          <button onclick="peDelete()" id="peDeleteBtn" style="flex:1;padding:10px;border:1.5px solid #c0392b;background:transparent;color:#c0392b;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">🗑 Supprimer</button>
           <button onclick="peSave()" style="flex:2;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">✓ Enregistrer</button>
         </div>
       </div>
@@ -3255,7 +3257,8 @@ function buildSessHTML(sess,wn,si){
   const isDone=DONE[sess.id]||!!(TRAIN_DATA[sess.id+'__done']);
   const td=TRAIN_DATA[sess.id];
   const label=SESS_LABELS[sess.type]||sess.title;
-  const trainBadge=td&&td.km?`<div class="sess-train">✓ ${td.km} km${td.pace?' . '+td.pace+'/km':''}</div>`:'';
+  const _fmtDoneDate=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');const mo=['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'][dt.getMonth()];return dt.getDate()+' '+mo;};
+  const trainBadge=td&&td.km?`<div class="sess-train">✓ ${td.km} km${td.pace?' . '+td.pace+'/km':''}${td.date?' · '+_fmtDoneDate(td.date):''}</div>`:'';
 
   // Renforcement: rendu spécial avec cartes exercice cochables
   if(sess.type==='renfo'){
@@ -3415,6 +3418,9 @@ function peOpen(i){
   // Allure
   const paceVal=e.speed>0?(()=>{const pm=60/e.speed;const mn=Math.floor(pm);const sc=Math.round((pm-mn)*60);return mn+':'+(sc<10?'0':'')+sc;})():'';
   document.getElementById('pePace').value=paceVal;
+  // Afficher le bouton Supprimer seulement si des données existent
+  const delBtn=document.getElementById('peDeleteBtn');
+  if(delBtn) delBtn.style.display=(e.km>0||e.free)?'block':'none';
   const ed=document.getElementById('progRowEditor');
   ed.style.display='block';
   ed.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -3430,6 +3436,34 @@ function peCalcPace(){
   const pMin=sec/km/60;
   const mn=Math.floor(pMin),sc=Math.round((pMin-mn)*60);
   document.getElementById('pePace').value=mn+':'+(sc<10?'0':'')+sc;
+}
+
+function peDelete(){
+  if(_peIdx<0)return;
+  const e=_peEntries[_peIdx];
+  TRAIN_DATA=loadTrain();
+  const isFree=e.free;
+  const id=isFree?e.id:_getSessionIdByLabel(e.label);
+  if(id){
+    if(isFree){
+      // Course libre : supprimer complètement
+      delete TRAIN_DATA[id];
+    } else {
+      // Séance du plan : supprimer les données réelles mais garder la séance
+      delete TRAIN_DATA[id];
+      delete TRAIN_DATA[id+'__done'];
+      delete DONE[id];
+      saveDone();
+      // Mettre à jour l'UI de la carte
+      const el=document.getElementById('sess-'+id);
+      if(el) el.classList.remove('done');
+    }
+    saveTrain();
+  }
+  peCancel();
+  buildProgressChart(PROG.weeks); if(PROG&&PROG.Z) buildPlanChart(PROG.weeks, PROG.Z);
+  if(PROG&&PROG.weeks) renderPlan(PROG);
+  toast('Séance supprimée');
 }
 
 function peCancel(){
@@ -3734,9 +3768,14 @@ function buildProgressChart(weeks){
         if(!finalEntries[fi].free){ planStartIdx=fi; break; }
       }
       // X de début des pointillés = position de S1·1 dans le canvas
-      // X de fin = bord droit du canvas
+      // X de fin = position du dernier point de données réelles (pas bord droit)
       var xTrendStart = planStartIdx >= 0 ? xOf(planStartIdx) : PAD_L;
-      var xTrendEnd   = PAD_L + cW;
+      // Trouver le dernier index dans finalEntries avec données réelles (free ou plan avec résultat)
+      var lastDataIdx = 0;
+      for(var fi=0; fi<finalEntries.length; fi++){
+        if(finalEntries[fi].km > 0 || finalEntries[fi].speed > 0) lastDataIdx = fi;
+      }
+      var xTrendEnd = xOf(lastDataIdx);
       var wMin=weekNums[0], wMax=weekNums[weekNums.length-1];
       function xOfW(wn){
         if(wMax===wMin) return xTrendStart;
@@ -4479,6 +4518,11 @@ function toggleRenfoDone(sessId, evt) {
     }
   } else {
     DONE[sessId] = Date.now();
+    // Enregistrer la date réelle dans TRAIN_DATA
+    const todayISO = new Date().toISOString().slice(0,10);
+    if(!TRAIN_DATA[sessId]) TRAIN_DATA[sessId] = {};
+    TRAIN_DATA[sessId].date = todayISO;
+    saveTrain();
   }
   saveDone();
 
