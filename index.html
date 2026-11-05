@@ -1597,7 +1597,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "63";
+const GENERATOR_VERSION = "64";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2878,7 +2878,7 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
 
   // === SEMAINE DE RÉCUPÉRATION (décharge ~80% volume) ===
   if (isDecharge) {
-    // 4 sessions maintenues, volume réduit
+    // Respect de effectiveSessions : on construit jusqu'à nSessions séances de course
     // 1. Séance qualitative adaptée à la phase courante (pas de spécifique trop tôt)
     //    phase1 → tempo seuil léger / phase2+ → blocs allure spécifique
     let dechargeType, dechargeTitle;
@@ -2891,14 +2891,18 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
     }
     const dechargeSteps = buildFracSession(dechargeType, Z, vma, index, dist, phase, 0.2, allureCible);
     sessions.push({ type:'frac', title: dechargeTitle, steps: dechargeSteps });
-    // 2. Footing endurance (35 min)
-    sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 35) });
-    // 3. Récupération active (30 min très lent)
-    sessions.push({ type:'recup', title:'Récupération active', steps: recupSteps(Z) });
+    // 2. Footing endurance (35 min) — ajouté seulement si place disponible
+    if (sessions.length < effectiveSessions - (longMin > 0 ? 1 : 0)) {
+      sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 35) });
+    }
+    // 3. Récupération active (30 min très lent) — seulement si > 2 séances
+    if (sessions.length < effectiveSessions - (longMin > 0 ? 1 : 0)) {
+      sessions.push({ type:'recup', title:'Récupération active', steps: recupSteps(Z) });
+    }
     // 4. Sortie longue réduite (75% du volume normal)
     if (longMin > 0) {
       sessions.push({ type:'long', title:'Sortie longue douce', steps: longRunSteps(Z, Math.round(longMin * 0.75), 0, 0, null) });
-    } else {
+    } else if (sessions.length < effectiveSessions) {
       sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 35) });
     }
     return sessions;
@@ -2918,24 +2922,33 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
 
     if (isFirstTaper) {
       // S-3 (marathon uniquement) : début décharge — volume < semaine précédente
+      // Respect effectiveSessions : toujours frac + SL, footing intermédiaires si place
       sessions.push({ type:'frac', title:'Fractionné spécifique — S-3', steps: buildFracSession('specifique', Z, vma, index, dist, 'taper', 0.2, allureCible) });
-      sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
-      sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 30) });
+      if (sessions.length < effectiveSessions - 1) {
+        sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
+      }
+      if (sessions.length < effectiveSessions - 1) {
+        sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 30) });
+      }
       sessions.push({ type:'long', title:'Sortie longue S-3', steps: longRunSteps(Z, 90, 0, qualIdx, null) });
       // FIX2: 1 séance renfo légère (core) maintenue en S-3 — arrêt total contre-productif
       sessions.push(mkRenfo(true));
     } else if (!isLastTaper) {
-      // S-2 : volume ~65%, qualité maintenue — 4 sessions comme une semaine normale mais raccourcies
+      // S-2 : volume ~65%, qualité maintenue — sessions respectant effectiveSessions
       // 1. Fractionné court spécifique (rappel intensité, durée réduite)
       const fracType = dist <= 21.2 ? 'I_court' : 'specifique';
       const fracSteps = buildFracSession(fracType, Z, vma, index, dist, 'taper', 0.3, allureCible);
       sessions.push({ type:'frac', title: fracTypeLabel(fracType) + ' — affûtage S-2', steps: fracSteps });
-      // 2. Footing avec accélérations (35 min — réduit pour que S-2 reste sous S-3 en volume)
-      const footAccSteps = footingSteps(Z, 35);
-      footAccSteps.push({ t:'active', d:8, txt:'6× accélérations progressives 100m · allure 5km · jambes légères, pas de sprint' });
-      sessions.push({ type:'footing', title:'Footing + accélérations', steps: footAccSteps });
-      // 3. Footing endurance (40 min)
-      sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
+      // 2. Footing avec accélérations — seulement si place avant la SL
+      if (sessions.length < effectiveSessions - 1) {
+        const footAccSteps = footingSteps(Z, 35);
+        footAccSteps.push({ t:'active', d:8, txt:'6× accélérations progressives 100m · allure 5km · jambes légères, pas de sprint' });
+        sessions.push({ type:'footing', title:'Footing + accélérations', steps: footAccSteps });
+      }
+      // 3. Footing endurance supplémentaire — seulement si > 3 séances
+      if (sessions.length < effectiveSessions - 1) {
+        sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
+      }
       // 4. Sortie longue affûtage — volume réduit S-2 (Pfitzinger : -30% vs semaine pic)
       const slTaperMin = dist >= 42 ? 75 : 60;
       sessions.push({ type:'long', title:'Sortie longue affûtage', steps: longRunSteps(Z, slTaperMin, 0, qualIdx, null) });
@@ -2953,10 +2966,14 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
       }
       tapLastSteps.push(...cooldownSteps(Z, 10));
       sessions.push({ type:'frac', title:'Rappels allure 10km (S-1)', steps: tapLastSteps });
-      // 2. Footing doux 35 min
-      sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 35) });
-      // 3. Footing doux 30 min
-      sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 30) });
+      // 2. Footing doux 35 min — seulement si > 1 séance restante avant activation
+      if (sessions.length < effectiveSessions - 1) {
+        sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 35) });
+      }
+      // 3. Footing doux 30 min — seulement si > 2 séances restantes
+      if (sessions.length < effectiveSessions - 1) {
+        sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 30) });
+      }
       // 4. Pré-compétition : activation + 2km allure cible
       const preRaceSteps = [];
       preRaceSteps.push(...footingSteps(Z, 15));
@@ -3612,7 +3629,13 @@ function renderPlan(prog){
     document.getElementById('planMeta').after(el); return el;
   })();
   if(allureCible && vma){
-    const vmaRequise = allureCible / 0.77;
+    // v64: ratio VMA tenable dépend de la distance (5km≈98%, 10km≈94%, semi≈88%, marathon≈82%)
+    const vRatio = viabilityRatio(dist); // ex: 0.98 pour 5km, 0.82 pour marathon
+    const vmaRequise = allureCible / vRatio;
+    // Label et seuil d'alerte selon la distance
+    const distLabel = dist <= 5 ? '5km' : dist <= 10 ? '10km' : dist <= 21.2 ? 'semi-marathon' : 'marathon';
+    const tenablePct = Math.round(vRatio * 100);       // ex: 98 pour 5km
+    const tenableRange = dist <= 5 ? '95–98' : dist <= 10 ? '90–94' : dist <= 21.2 ? '85–90' : '78–82';
     // Progression VMA estimée : +0.06 km/h par semaine d'entraînement structuré (conservateur)
     // soit ~+1 km/h sur 16 sem, ~+1.1 sur 19 sem
     const nbSemaines = weeks.length || 16;
@@ -3620,22 +3643,24 @@ function renderPlan(prog){
     const vmaProjetee = vma + vmaGainEstime;
     const ratioVMAactuel  = Math.round(allureCible / vma * 100);
     const ratioVMAprojetee = Math.round(allureCible / vmaProjetee * 100);
+    // Seuil d'alerte critique : ratioVMAprojetee > tenablePct + 2 (légère tolérance)
+    const thresholdCritique = tenablePct + 2;
     if(vmaProjetee < vmaRequise * 0.90){
       // Même avec la progression, l'objectif reste hors de portée
-      const tempsRealisteSec = prog.dist / ((vmaProjetee + 0.9) * 0.77) * 3600;
+      const tempsRealisteSec = prog.dist / ((vmaProjetee + 0.9) * vRatio) * 3600;
       const rh=Math.floor(tempsRealisteSec/3600), rm=Math.floor((tempsRealisteSec%3600)/60);
-      const tempsRealiste=rh+'h'+String(rm).padStart(2,'0');
+      const tempsRealiste=rh>0 ? rh+'h'+String(rm).padStart(2,'0') : rm+'min'+String(Math.floor((tempsRealisteSec%60))).padStart(2,'0');
       vmaWarnEl.style.display='block';
-      if(ratioVMAprojetee >= 90){
+      if(ratioVMAprojetee >= thresholdCritique){
         vmaWarnEl.style.background='#f8d7da';
         vmaWarnEl.style.border='1px solid #f5c6cb';
         vmaWarnEl.style.color='#721c24';
-        vmaWarnEl.innerHTML=`🚨 <strong>Objectif très difficile à atteindre</strong> — même en progressant de +${vmaGainEstime.toFixed(1)} km/h sur ${nbSemaines} semaines, ta VMA projetée (${vmaProjetee.toFixed(1)} km/h) représenterait encore <strong>${ratioVMAprojetee}% de ta VMA</strong> sur un marathon — au-delà des ~82–85% tenables sur 42km.<br>VMA requise pour ${goalTime} : ${vmaRequise.toFixed(1)} km/h. Temps réaliste en fin de programme : <strong>~${tempsRealiste}</strong>.`;
+        vmaWarnEl.innerHTML=`🚨 <strong>Objectif très difficile à atteindre</strong> — même en progressant de +${vmaGainEstime.toFixed(1)} km/h sur ${nbSemaines} semaines, ta VMA projetée (${vmaProjetee.toFixed(1)} km/h) représenterait encore <strong>${ratioVMAprojetee}% de ta VMA</strong> sur un ${distLabel} — au-delà des ~${tenableRange}% tenables sur cette distance.<br>VMA requise pour ${goalTime} : ${vmaRequise.toFixed(1)} km/h. Temps réaliste en fin de programme : <strong>~${tempsRealiste}</strong>.`;
       } else {
         vmaWarnEl.style.background='#fff3cd';
         vmaWarnEl.style.border='1px solid #f0ad4e';
         vmaWarnEl.style.color='#856404';
-        vmaWarnEl.innerHTML=`⚠️ <strong>Objectif ambitieux</strong> — VMA actuelle ${vma.toFixed(1)} km/h → projetée <strong>${vmaProjetee.toFixed(1)} km/h</strong> après ${nbSemaines} semaines (+${vmaGainEstime.toFixed(1)} km/h estimé). Ratio final : <strong>${ratioVMAprojetee}% de ta VMA</strong> (VMA requise : ${vmaRequise.toFixed(1)} km/h). Un marathon se court généralement à 78–82% de la VMA.<br>Temps réaliste en fin de programme : <strong>~${tempsRealiste}</strong>. Ajuste tes attentes le jour J.`;
+        vmaWarnEl.innerHTML=`⚠️ <strong>Objectif ambitieux</strong> — VMA actuelle ${vma.toFixed(1)} km/h → projetée <strong>${vmaProjetee.toFixed(1)} km/h</strong> après ${nbSemaines} semaines (+${vmaGainEstime.toFixed(1)} km/h estimé). Ratio final : <strong>${ratioVMAprojetee}% de ta VMA</strong> (VMA requise : ${vmaRequise.toFixed(1)} km/h). Un ${distLabel} se court généralement à ${tenableRange}% de la VMA.<br>Temps réaliste en fin de programme : <strong>~${tempsRealiste}</strong>. Ajuste tes attentes le jour J.`;
       }
     } else if(vma < vmaRequise * 0.90){
       // VMA actuelle insuffisante, mais la progression devrait suffire — message informatif
