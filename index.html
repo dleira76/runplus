@@ -3404,7 +3404,10 @@ function buildSessHTML(sess,wn,si){
       // Stocker les données exo dans le registre global (clé = exoKey)
       window._RENFO_EXO = window._RENFO_EXO || {};
       // Toujours prendre le SVG depuis RENFO_LIB courant (jamais depuis le JSON sauvegardé)
-      const livreExo = RENFO_LIB.find(e => e.id === st.exo.id) || st.exo;
+      // Fallback par name si id absent (vieux programmes sans id dans le JSON)
+      const livreExo = RENFO_LIB.find(e => e.id === st.exo.id)
+                    || RENFO_LIB.find(e => e.name === st.exo.name)
+                    || st.exo;
       const exoAvecSvgActuel = Object.assign({}, st.exo, { svg: livreExo.svg });
       window._RENFO_EXO[exoKey] = exoAvecSvgActuel;
       return`<div class="renfo-exo${exoDone?' renfo-exo-done':''}" id="exo-${exoKey}" onclick="openRenfoModal(window._RENFO_EXO['${exoKey}'],'${exoKey}','${sess.id}',${totalExos})">
