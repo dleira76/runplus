@@ -1549,7 +1549,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "59";
+const GENERATOR_VERSION = "60";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3403,10 +3403,13 @@ function buildSessHTML(sess,wn,si){
       const muscleShort=(st.exo.muscle||'').split('·')[0].trim();
       // Stocker les données exo dans le registre global (clé = exoKey)
       window._RENFO_EXO = window._RENFO_EXO || {};
-      window._RENFO_EXO[exoKey] = st.exo;
+      // Toujours prendre le SVG depuis RENFO_LIB courant (jamais depuis le JSON sauvegardé)
+      const livreExo = RENFO_LIB.find(e => e.id === st.exo.id) || st.exo;
+      const exoAvecSvgActuel = Object.assign({}, st.exo, { svg: livreExo.svg });
+      window._RENFO_EXO[exoKey] = exoAvecSvgActuel;
       return`<div class="renfo-exo${exoDone?' renfo-exo-done':''}" id="exo-${exoKey}" onclick="openRenfoModal(window._RENFO_EXO['${exoKey}'],'${exoKey}','${sess.id}',${totalExos})">
         <div class="renfo-hdr">
-          ${st.exo.svg}
+          ${livreExo.svg}
           <div class="renfo-check-overlay">✓</div>
         </div>
         <div class="renfo-body">
