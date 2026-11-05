@@ -197,7 +197,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   padding:16px 12px 12px;
   position:relative;
 }
-.renfo-hdr svg{width:72px;height:72px;overflow:visible;filter:drop-shadow(0 2px 4px rgba(44,58,138,.10))}
+.renfo-hdr svg{width:100%;height:80px;max-width:220px;overflow:visible;filter:drop-shadow(0 2px 4px rgba(44,58,138,.10))}
 
 /* Checkmark overlay */
 .renfo-check-overlay{
@@ -267,7 +267,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   background:var(--renfo-hdr);border-radius:14px;margin:0 16px 16px;
   padding:24px 16px;
 }
-.rmodal-svg-wrap svg{width:100px;height:100px;overflow:visible}
+.rmodal-svg-wrap svg{width:100%;height:120px;max-width:280px;overflow:visible}
 .rmodal-body{padding:0 20px 20px}
 .rmodal-name{font-size:18px;font-weight:800;color:var(--fg);margin-bottom:4px}
 .rmodal-muscle{font-size:12px;color:var(--renfo-muscle);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
@@ -1549,7 +1549,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "58";
+const GENERATOR_VERSION = "59";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
