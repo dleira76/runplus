@@ -3388,9 +3388,23 @@ function homeDeleteProg(id){
 function homeNewPlan(){
   // Sauvegarder le programme courant dans la librairie avant d'en créer un nouveau
   saveCurrentProgToLibrary();
+  // Réserver un nouvel ID pour ce futur programme
+  var newId = 'prog_' + Date.now();
+  try { localStorage.setItem('rp_pending_new_id', newId); } catch(e){}
+  setActiveId(null);
   // Réinitialiser l'état pour le questionnaire
   PROG = null; DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
-  setActiveId(null);
+  // Remettre le questionnaire à zéro visuellement
+  // Réinitialiser visuellement le questionnaire
+  document.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('sel'); });
+  var iGT = document.getElementById('inp-goaltime'); if(iGT) iGT.value = '';
+  var iRD = document.getElementById('inp-racedate'); if(iRD) iRD.value = '';
+  var iRN = document.getElementById('inp-racename'); if(iRN) iRN.value = '';
+  document.querySelectorAll('.q-step').forEach(function(s){ s.classList.remove('active'); });
+  var qs0 = document.getElementById('qs0'); if(qs0) qs0.classList.add('active');
+  if(typeof updateProgress === 'function') updateProgress(0);
+  // Réinitialiser QSel
+  for(var k in QSel){ QSel[k] = false; }
   showScreen('screen-q');
 }
 
@@ -3424,13 +3438,49 @@ function saveCurrentProgToLibrary(){
 }
 
 // Hook : après génération d'un nouveau programme, l'enregistrer dans la librairie
+// Si rp_pending_new_id est défini, on l'utilise comme ID (créé par homeNewPlan)
+// Sinon on crée un nouvel ID (génération directe sans passer par la Home)
 function saveNewProgToLibrary(p){
   if(!p || !p.weeks) return;
   var lib = loadLibrary();
-  var newId = 'prog_' + Date.now();
-  lib.unshift({ id: newId, prog: p, done: {}, train: {}, history: [] });
+  var pendingId;
+  try { pendingId = localStorage.getItem('rp_pending_new_id'); } catch(e){}
+
+  if(pendingId){
+    // Chercher si cet ID existe déjà (ne devrait pas, mais sécurité)
+    var existIdx = lib.findIndex(function(e){ return e.id === pendingId; });
+    if(existIdx >= 0){
+      lib[existIdx].prog = p;
+      lib[existIdx].done = {};
+      lib[existIdx].train = {};
+      lib[existIdx].history = [];
+    } else {
+      lib.unshift({ id: pendingId, prog: p, done: {}, train: {}, history: [] });
+    }
+    setActiveId(pendingId);
+    try { localStorage.removeItem('rp_pending_new_id'); } catch(e){}
+  } else {
+    // Vérifier si activeId courant existe déjà dans la lib (édition d'un prog existant)
+    var activeId = getActiveId();
+    if(activeId){
+      var idx = lib.findIndex(function(e){ return e.id === activeId; });
+      if(idx >= 0){
+        lib[idx].prog = p;
+        lib[idx].done = {};
+        lib[idx].train = {};
+        lib[idx].history = [];
+        saveLibrary(lib);
+        DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
+        return;
+      }
+    }
+    // Vraiment nouveau
+    var newId = 'prog_' + Date.now();
+    lib.unshift({ id: newId, prog: p, done: {}, train: {}, history: [] });
+    setActiveId(newId);
+  }
+
   saveLibrary(lib);
-  setActiveId(newId);
   DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
 }
 
