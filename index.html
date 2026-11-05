@@ -1549,7 +1549,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "54";
+const GENERATOR_VERSION = "55";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3282,26 +3282,37 @@ function renderPlan(prog){
   })();
   if(allureCible && vma){
     const vmaRequise = allureCible / 0.77;
-    const ratioVMA = Math.round(allureCible / vma * 100); // % de VMA couru sur la distance
-    if(vma < vmaRequise * 0.90){
-      const tempsRealisteSec = prog.dist / ((vma + 0.9) * 0.77) * 3600;
+    // Progression VMA estimée : +0.06 km/h par semaine d'entraînement structuré (conservateur)
+    // soit ~+1 km/h sur 16 sem, ~+1.1 sur 19 sem
+    const nbSemaines = weeks.length || 16;
+    const vmaGainEstime = Math.min(nbSemaines * 0.06, 1.5); // plafonné à +1.5 km/h
+    const vmaProjetee = vma + vmaGainEstime;
+    const ratioVMAactuel  = Math.round(allureCible / vma * 100);
+    const ratioVMAprojetee = Math.round(allureCible / vmaProjetee * 100);
+    if(vmaProjetee < vmaRequise * 0.90){
+      // Même avec la progression, l'objectif reste hors de portée
+      const tempsRealisteSec = prog.dist / ((vmaProjetee + 0.9) * 0.77) * 3600;
       const rh=Math.floor(tempsRealisteSec/3600), rm=Math.floor((tempsRealisteSec%3600)/60);
       const tempsRealiste=rh+'h'+String(rm).padStart(2,'0');
       vmaWarnEl.style.display='block';
-      // Différencier : >90% VMA = physiologiquement impossible, 80-90% = très ambitieux
-      if(ratioVMA >= 90){
-        // Impossible physiologiquement : personne ne court un 42km à ≥90% de sa VMA
+      if(ratioVMAprojetee >= 90){
         vmaWarnEl.style.background='#f8d7da';
         vmaWarnEl.style.border='1px solid #f5c6cb';
         vmaWarnEl.style.color='#721c24';
-        vmaWarnEl.innerHTML=`🚨 <strong>Objectif physiologiquement impossible</strong> — ton allure cible (${allureCible.toFixed(1)} km/h) représente <strong>${ratioVMA}% de ta VMA</strong> estimée (${vma.toFixed(1)} km/h).<br>Or, personne ne peut courir un marathon à plus de ~82–85% de sa VMA : au-delà de ~85%, la filière aérobie est dépassée et le déficit d\'oxygène force un arrêt bien avant l\'arrivée.<br>VMA requise pour ${goalTime} : ${vmaRequise.toFixed(1)} km/h. Temps réaliste après ce programme : <strong>~${tempsRealiste}</strong>.`;
+        vmaWarnEl.innerHTML=`🚨 <strong>Objectif très difficile à atteindre</strong> — même en progressant de +${vmaGainEstime.toFixed(1)} km/h sur ${nbSemaines} semaines, ta VMA projetée (${vmaProjetee.toFixed(1)} km/h) représenterait encore <strong>${ratioVMAprojetee}% de ta VMA</strong> sur un marathon — au-delà des ~82–85% tenables sur 42km.<br>VMA requise pour ${goalTime} : ${vmaRequise.toFixed(1)} km/h. Temps réaliste en fin de programme : <strong>~${tempsRealiste}</strong>.`;
       } else {
-        // Très ambitieux (80–89% VMA) : difficile mais dans le domaine du possible
         vmaWarnEl.style.background='#fff3cd';
         vmaWarnEl.style.border='1px solid #f0ad4e';
         vmaWarnEl.style.color='#856404';
-        vmaWarnEl.innerHTML=`⚠️ <strong>Objectif très ambitieux</strong> — ton allure cible représente <strong>${ratioVMA}% de ta VMA</strong> estimée (${vma.toFixed(1)} km/h, VMA requise : ${vmaRequise.toFixed(1)} km/h). Un marathon se court généralement à 78–82% de la VMA ; au-delà de 85%, le risque de défaillance est élevé.<br>Temps réaliste après ce programme : <strong>~${tempsRealiste}</strong>. Ajuste tes attentes le jour J.`;
+        vmaWarnEl.innerHTML=`⚠️ <strong>Objectif ambitieux</strong> — VMA actuelle ${vma.toFixed(1)} km/h → projetée <strong>${vmaProjetee.toFixed(1)} km/h</strong> après ${nbSemaines} semaines (+${vmaGainEstime.toFixed(1)} km/h estimé). Ratio final : <strong>${ratioVMAprojetee}% de ta VMA</strong> (VMA requise : ${vmaRequise.toFixed(1)} km/h). Un marathon se court généralement à 78–82% de la VMA.<br>Temps réaliste en fin de programme : <strong>~${tempsRealiste}</strong>. Ajuste tes attentes le jour J.`;
       }
+    } else if(vma < vmaRequise * 0.90){
+      // VMA actuelle insuffisante, mais la progression devrait suffire — message informatif
+      vmaWarnEl.style.display='block';
+      vmaWarnEl.style.background='#d1ecf1';
+      vmaWarnEl.style.border='1px solid #bee5eb';
+      vmaWarnEl.style.color='#0c5460';
+      vmaWarnEl.innerHTML=`ℹ️ <strong>Objectif atteignable avec la progression</strong> — VMA actuelle : ${vma.toFixed(1)} km/h (${ratioVMAactuel}% de ta VMA), mais en progressant de +${vmaGainEstime.toFixed(1)} km/h sur ${nbSemaines} semaines, ta VMA projetée de <strong>${vmaProjetee.toFixed(1)} km/h</strong> met l'objectif à portée (${ratioVMAprojetee}% · VMA requise : ${vmaRequise.toFixed(1)} km/h). Reste cohérent avec les allures d'entraînement.`;
     } else {
       vmaWarnEl.style.display='none';
     }
