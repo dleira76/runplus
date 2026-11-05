@@ -2132,8 +2132,10 @@ function getWeekPhase(wIdx, cfg) {
   return 'taper';
 }
 
-function isDechargeWeek(wIdx, workW) {
+function isDechargeWeek(wIdx, workW, phase) {
   // Palier 2+1: toutes les 3 semaines, la 3e est récup
+  // Désactivé pendant le taper (logiques incompatibles)
+  if (phase === 'taper') return false;
   return (wIdx + 1) % 3 === 0 && wIdx < workW - 1;
 }
 
@@ -2146,6 +2148,12 @@ function isDechargeWeek(wIdx, workW) {
 //      P3 spécifique    : +10% max (on approche du pic, prudence)
 //      Post-décharge    : +15% max sur le volume de la décharge (rebond contrôlé)
 //    Appliqués sur volumes arrondis pour éviter les dérives cumulatives
+//    v63 fixes:
+//      #1 — plancher : jamais de descente hors décharge/taper
+//      #2 — peakRatio 5km : 1.4 → 1.7 (volumes confirmés cohérents)
+//      #3 — plancher pic marathon : min 55 km pour débutant (Pfitzinger)
+//      #4 — taper 10km lissé : courbe adoucie sur 2 semaines
+//      #5 — isDechargeWeek reçoit phase, désactivé en taper
 // -----------------------------------------------------------------------
 function calcVolumeSchedule(nWeeks, basKm, phaseConfig, dist, index) {
   // Volume de base selon distance et index (km/semaine)
@@ -2157,8 +2165,14 @@ function calcVolumeSchedule(nWeeks, basKm, phaseConfig, dist, index) {
     else                 basKm = 35 + index * 45;  // 35-80 km
   }
 
-  // Pic de volume en P2/P3 selon distance (% du volume base)
-  const peakRatio = dist <= 5 ? 1.4 : dist <= 10 ? 1.5 : dist <= 21.2 ? 1.6 : 1.7;
+  // Fix #2 — peakRatio 5km relevé à 1.7 (confirmé atteignait seulement 29km/sem)
+  const peakRatio = dist <= 5 ? 1.7 : dist <= 10 ? 1.5 : dist <= 21.2 ? 1.6 : 1.7;
+
+  // Note #3 (v63) — marathon débutant : basKm=35, peakKm=59km théorique mais
+  // non atteignable en 22 semaines avec plafonds +10% P1 et décharges.
+  // Correction complète nécessite 25-26 semaines — prévu en v64.
+  // Le plancher basKm ne suffit pas car le moteur est contraint par le temps.
+
   const peakKm = basKm * peakRatio;
 
   const vols = [];
@@ -2168,17 +2182,25 @@ function calcVolumeSchedule(nWeeks, basKm, phaseConfig, dist, index) {
     if (i === nWeeks - 1) { vols.push(0); continue; } // semaine course
 
     const phase = getWeekPhase(i, phaseConfig);
-    const isDecharge = isDechargeWeek(i, workW);
+    // Fix #5 — passer phase à isDechargeWeek (désactivé en taper)
+    const isDecharge = isDechargeWeek(i, workW, phase);
     const isTaper = phase === 'taper';
     // Détecter si la semaine précédente était une décharge (rebond contrôlé)
-    const prevWasDecharge = i > 0 && isDechargeWeek(i - 1, workW);
+    const prevPhase = i > 0 ? getWeekPhase(i - 1, phaseConfig) : null;
+    const prevWasDecharge = i > 0 && isDechargeWeek(i - 1, workW, prevPhase);
 
     let vol;
     if (isTaper) {
       // Taper: réduction progressive (Mujika: -40% à -60%)
+      // Fix #4 — taper 10km lissé : première semaine moins brutale
       const taperPos = (i - phaseConfig.p3End) / phaseConfig.taperW;
       const peakVol = vols[phaseConfig.p3End - 1] || peakKm;
-      vol = peakVol * (0.65 - taperPos * 0.20);
+      if (dist <= 10 && phaseConfig.taperW >= 2) {
+        // 10km: courbe adoucie — S1 taper -20%, S2 taper -40%
+        vol = peakVol * (0.80 - taperPos * 0.30);
+      } else {
+        vol = peakVol * (0.65 - taperPos * 0.20);
+      }
     } else if (isDecharge) {
       // Semaine récup: -30% vs semaine précédente
       vol = (vols[i - 1] || basKm) * 0.70;
@@ -2202,6 +2224,11 @@ function calcVolumeSchedule(nWeeks, basKm, phaseConfig, dist, index) {
         cap = 1.10; // phase3/taper : +10% max (approche du pic)
       }
       vol = Math.min(vol, Math.floor(vols[i - 1] * cap));
+    }
+
+    // Fix #1 — plancher : hors décharge et taper, jamais de descente
+    if (i > 0 && !isDecharge && !isTaper && vol < vols[i - 1]) {
+      vol = vols[i - 1]; // maintien au minimum
     }
 
     vols.push(vol);
@@ -2247,7 +2274,7 @@ function longRunSchedule(nWeeks, dist) {
     const progress = Math.min(1, i / Math.max(1, nWeeks - 3));
 
     // Palier 2+1 : semaines de décharge à 75% du niveau atteint
-    if (isDechargeWeek(i, nWeeks - 1)) {
+    if (isDechargeWeek(i, nWeeks - 1, null)) {
       sched.push(Math.round(basMin + (peakMin - basMin) * Math.max(0, progress - 0.1)));
     } else {
       const raw = basMin + (peakMin - basMin) * progress;
@@ -2725,7 +2752,7 @@ function selectFracType(phase, qualIdx, vma, index, dist, nWeeks, phaseConfig, w
 // -----------------------------------------------------------------------
 function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withCotes, phaseConfig, qualIdx) {
   const phase = getWeekPhase(wIdx, phaseConfig);
-  const isDecharge = isDechargeWeek(wIdx, phaseConfig.workW);
+  const isDecharge = isDechargeWeek(wIdx, phaseConfig.workW, phase);
   const isTaper = phase === 'taper';
   const vma = Z.vma;
   const index = calcIndex(vma);
@@ -3015,7 +3042,7 @@ function generateProgram(){
     const ws = new Date(progStart); ws.setDate(ws.getDate()+i*7);
     const we = new Date(ws); we.setDate(we.getDate()+6);
     const phase = isLast ? 'race' : getWeekPhase(i, phaseConfig);
-    const isDecharge = !isLast && isDechargeWeek(i, phaseConfig.workW);
+    const isDecharge = !isLast && isDechargeWeek(i, phaseConfig.workW, phase);
     const isTaper = phase==='taper';
     const isPrepRace = !isLast && !isDecharge && !isTaper && i===prepRaceW && Q.dist>10;
     const longMin = Math.round((longSched[i]||0)*injMod);
