@@ -1549,7 +1549,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "49";
+const GENERATOR_VERSION = "50";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -1721,7 +1721,7 @@ function selectRenfoExos(phase, index, nSessions, isTaper) {
   const renfoExp  = Q.renfoExp != null ? +Q.renfoExp : 1; // 0=jamais, 1=parfois, 2=régulier
   const eligible = RENFO_LIB.filter(e => {
     if (!(e.phase & phaseBit)) return false;
-    // Exercices nécessitant un banc/marche
+    // Exercices nécessitant un banc/marche (ischio_curl disponible sans équip)
     if (['hip_thrust','step_up','mollet_exc'].includes(e.id) && !hasEquip) return false;
     return true;
   });
@@ -1741,21 +1741,29 @@ function selectRenfoExos(phase, index, nSessions, isTaper) {
   // Core: 2 exercices (toujours, tous niveaux)
   exos.push(core[0 % core.length], core[1 % core.length]);
 
-  // Excentrique mollet: toujours si équipement dispo, sinon substitut plat
-  if (exc.length) exos.push(exc[0]);
-  else if (hasEquip === false) {
-    // Sans marche: pont fessier comme renforcement de substitution mollet
-    const pont = eligible.find(e => e.id === 'pont_fessier');
-    if (pont && !exos.includes(pont)) exos.push(pont);
+  // Excentrique mollet: si équipement dispo
+  // FIX4: Sans banc → ischio curl glissé comme substitut ischio-dominant
+  if (exc.length) {
+    exos.push(exc[0]);
+  } else {
+    // Sans marche: ischio curl glissé (sol, aucun équipement requis)
+    const ischio = RENFO_LIB.find(e => e.id === 'ischio_curl');
+    if (ischio && !exos.some(x => x && x.id === 'ischio_curl')) exos.push(ischio);
   }
 
   // Lower: seulement si expérience > 0 (débutants : core only en P1)
   if (phase !== 'phase1' || renfoExp >= 1) {
     if (lower.length) {
-      exos.push(lower[0 % lower.length]);
-      // 2e exercice lower uniquement si expérimenté ou P2/P3
-      if ((renfoExp >= 1 || phase !== 'phase1') && index >= 0.2 && lower.length > 1) {
-        exos.push(lower[1 % lower.length]);
+      // FIX1: Premier lower toujours inclus
+      const lower0 = lower[0];
+      exos.push(lower0);
+      // FIX1: Ischio curl glissé systématiquement en 2e lower (P1+ inclus)
+      // s'il n'est pas déjà dans la liste (ex: substitut mollet ci-dessus)
+      const ischioInLib = lower.find(e => e.id === 'ischio_curl');
+      if (ischioInLib && lower0.id !== 'ischio_curl' && !exos.some(x => x && x.id === 'ischio_curl')) {
+        exos.push(ischioInLib);
+      } else if (!ischioInLib && lower.length > 1 && index >= 0.2) {
+        exos.push(lower[1]);
       }
     }
   }
@@ -1791,8 +1799,10 @@ function selectRenfoExos(phase, index, nSessions, isTaper) {
 // =======================================================================
 function progressRenfoExo(exo, weekInPhase, phase) {
   // Niveaux: 1 (début), 2 (milieu), 3 (fin de phase)
-  // Seuil de passage: perception < 6/10 + 3 séries sans compensation
-  const lvl = weekInPhase <= 2 ? 1 : weekInPhase <= 4 ? 2 : 3;
+  // FIX3: Carry-forward — au changement de phase on repart au min lvl2
+  // (sauf P1 semaines 1-2 pour vrais débutants)
+  const rawLvl = weekInPhase <= 2 ? 1 : weekInPhase <= 4 ? 2 : 3;
+  const lvl = (rawLvl === 1 && phase !== 'phase1') ? 2 : rawLvl;
   const e = Object.assign({}, exo); // copie superficielle
 
   switch (exo.id) {
@@ -2788,6 +2798,8 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
       sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
       sessions.push({ type:'footing', title:'Footing doux', steps: footingSteps(Z, 30) });
       sessions.push({ type:'long', title:'Sortie longue S-3', steps: longRunSteps(Z, 90, 0, qualIdx, null) });
+      // FIX2: 1 séance renfo légère (core) maintenue en S-3 — arrêt total contre-productif
+      sessions.push(mkRenfo(true));
     } else if (!isLastTaper) {
       // S-2 : volume ~65%, qualité maintenue — 4 sessions comme une semaine normale mais raccourcies
       // 1. Fractionné court spécifique (rappel intensité, durée réduite)
@@ -2803,6 +2815,8 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
       // 4. Sortie longue affûtage — volume réduit S-2 (Pfitzinger : -30% vs semaine pic)
       const slTaperMin = dist >= 42 ? 75 : 60;
       sessions.push({ type:'long', title:'Sortie longue affûtage', steps: longRunSteps(Z, slTaperMin, 0, qualIdx, null) });
+      // FIX2: 1 séance renfo légère (core) maintenue en S-2 — recommandation médecin sport
+      sessions.push(mkRenfo(true));
     } else {
       // S-1 : semaine avant la course — volume ~40%, intensité préservée sur durées courtes
       // 1. Fractionné très court : rappels vitesse (réveiller les jambes)
