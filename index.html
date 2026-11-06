@@ -4714,6 +4714,20 @@ function findSess(id){for(const w of PROG.weeks){const s=w.sessions.find(s=>s.id
 
 function openTL(id){
   TL_SESS=findSess(id); if(!TL_SESS)return;
+  // v70b — séance renfo : Timeline lance directement le 1er exercice
+  if(TL_SESS.type==='renfo'){
+    const firstKey=`${id}_exo0`;
+    const firstExo=window._RENFO_EXO&&window._RENFO_EXO[firstKey];
+    if(firstExo){
+      const total=(TL_SESS.steps||[]).filter(s=>s.exo).length;
+      // S'assurer que la grille est ouverte (rendu des cartes)
+      const grid=document.getElementById('renfo-grid-'+id);
+      if(grid&&grid.style.display==='none') toggleRenfoGrid(id);
+      openRenfoModal(firstExo, firstKey, id, total);
+      setTimeout(()=>renfoTimerStart(), 400);
+    }
+    return;
+  }
   let cum=0;
   TL_STEPS=TL_SESS.steps.map(s=>{const st=cum;cum+=(s.d||0)*60;return{...s,startSec:st,endSec:cum};});
   TL_TOTAL=cum;
