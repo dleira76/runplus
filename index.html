@@ -1597,7 +1597,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "66";
+const GENERATOR_VERSION = "67";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2780,7 +2780,7 @@ function selectFracType(phase, qualIdx, vma, index, dist, nWeeks, phaseConfig, w
 // -----------------------------------------------------------------------
 // 9. CONSTRUCTION DE LA SEMAINE (nouveau moteur)
 // -----------------------------------------------------------------------
-function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withCotes, phaseConfig, qualIdx) {
+function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withCotes, phaseConfig, qualIdx, targetVolKm) {
   const phase = getWeekPhase(wIdx, phaseConfig);
   const isDecharge = isDechargeWeek(wIdx, phaseConfig.workW, phase);
   const isTaper = phase === 'taper';
@@ -2978,8 +2978,24 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
   const fracSteps = buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allureCible);
   runSessions.push({ type: fracTypeToSessionType(fracType), title: fracTypeLabel(fracType), steps: fracSteps });
 
-  // 2. Footing endurance
-  const footDur = 35 + Math.round(index * 15);
+  // 2. Footing endurance — durée dérivée du volume cible si disponible (v67)
+  // Vitesse de footing ≈ Z.z1.max km/h (endurance fondamentale)
+  // km sortie longue ≈ longMin/60 × (Z.z1.max × 0.92) — allure un peu plus lente
+  // km footing total = targetVolKm - longKm - km_frac (estimé 7km pour une séance qual)
+  // On répartit sur les footings (hors SL) : nFootings ≈ effectiveSessions - 1 (SL) - 1 (frac)
+  let footDur;
+  if (targetVolKm > 0 && Z.z1 && Z.z1.max > 0) {
+    const footSpeed = Z.z1.max; // km/h
+    const longKm = longMin > 0 ? (longMin / 60) * (footSpeed * 0.92) : 0;
+    const fracKm = 7 + index * 2; // estimation séance qual : ~7-11 km selon niveau
+    const nFootings = Math.max(1, effectiveSessions - (longMin > 0 ? 1 : 0) - 1);
+    const footingTotalKm = Math.max(0, targetVolKm - longKm - fracKm);
+    const footingKmPerSession = footingTotalKm / nFootings;
+    footDur = Math.round(footingKmPerSession / footSpeed * 60);
+    footDur = Math.max(25, Math.min(75, footDur)); // borne sécurité 25-75 min
+  } else {
+    footDur = 35 + Math.round(index * 15); // fallback : valeur par défaut
+  }
   const withCadence = phase === 'phase1' && qualIdx <= 6;
   runSessions.push({ type:'footing', title: withCadence ? 'Footing cadence' : 'Footing endurance fondamentale', steps: footingSteps(Z, footDur, withCadence) });
 
@@ -3072,6 +3088,8 @@ function generateProgram(){
   const nWeeks = Math.max(1, Math.round((raceMonday-progStart)/(7*864e5))+1);
   const longSched = longRunSchedule(nWeeks, Q.dist);
   const phaseConfig = calcPhaseDurations(nWeeks, Q.dist, index);
+  // v67 — calcVolumeSchedule connecté : volumes cibles réels par semaine
+  const weekVols = calcVolumeSchedule(nWeeks, Q.volume||null, phaseConfig, Q.dist, index);
   // Course intermédiaire : priorité à la date explicite (Q.intermediateRace), sinon placement algorithmique mi-P2
   let prepRaceW = phaseConfig.p1End + Math.round((phaseConfig.p2End - phaseConfig.p1End) * 0.5);
   const hasIntermRace = !!(Q.intermediateRace && Q.intermediateRace.raceDate && Q.dist > 10);
@@ -3128,7 +3146,7 @@ function generateProgram(){
       }
       sessions=s;
     } else {
-      sessions=buildWeek(i,Z,Q.days,longMin,Q.dist,allureCible,nWeeks,withCotes,phaseConfig,qualIdx);
+      sessions=buildWeek(i,Z,Q.days,longMin,Q.dist,allureCible,nWeeks,withCotes,phaseConfig,qualIdx,weekVols[i]||0);
       if(!isDecharge && !isTaper) qualIdx++;
     }
 
