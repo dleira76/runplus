@@ -277,6 +277,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .rmodal-tip{font-size:12px;color:var(--renfo-muscle);line-height:1.5;background:var(--renfo-hdr);border-radius:10px;padding:10px 12px}
 .rmodal-tip-lbl{font-weight:700;color:var(--accent);margin-bottom:2px;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 .rmodal-close{display:block;width:calc(100% - 32px);margin:16px 16px 0;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--font)}
+/* Timer renfo */
+.rmodal-timer{margin:0 16px 4px;border-radius:14px;overflow:hidden;background:var(--renfo-hdr);display:none}
+.rmodal-timer.active{display:block}
+.rmodal-timer-phase{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;text-align:center;padding:8px 0 2px;color:var(--accent)}
+.rmodal-timer-ring{display:flex;align-items:center;justify-content:center;padding:8px 0 4px}
+.rmodal-timer-ring svg{width:88px;height:88px}
+.rmodal-timer-digits{font-size:26px;font-weight:800;color:var(--fg);fill:var(--fg);text-anchor:middle;dominant-baseline:middle}
+.rmodal-timer-info{text-align:center;font-size:12px;color:var(--renfo-muscle);padding:2px 0 10px}
+.rmodal-timer-btns{display:flex;gap:8px;padding:0 12px 12px}
+.rmodal-timer-btns button{flex:1;padding:9px 0;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:700;font-family:var(--font)}
+.rtbtn-start{background:var(--accent);color:#fff}
+.rtbtn-skip{background:var(--surface);color:var(--fg);border:1.5px solid var(--border)!important}
+.rmodal-side-note{background:var(--renfo-pill-bg);color:var(--renfo-pill-fg);border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600;margin:0 16px 10px;text-align:center;display:none}
+.rmodal-side-note.show{display:block}
 .tl-btn{padding:7px 14px;background:var(--surface);border:1.5px solid var(--accent);color:var(--accent);border-radius:8px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all .15s;display:flex;align-items:center;gap:5px}
 .tl-btn:hover{background:var(--accent);color:#fff}
 /* Bullets d'étapes */
@@ -767,6 +781,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   <div id="renfo-modal-sheet">
     <div class="rmodal-handle"></div>
     <div class="rmodal-svg-wrap" id="rmodal-svg"></div>
+    <div class="rmodal-side-note" id="rmodal-side-note"></div>
     <div class="rmodal-body">
       <div class="rmodal-name" id="rmodal-name"></div>
       <div class="rmodal-muscle" id="rmodal-muscle"></div>
@@ -775,6 +790,24 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <div class="rmodal-tip" id="rmodal-tip" style="display:none">
         <div class="rmodal-tip-lbl">💡 Conseil</div>
         <div id="rmodal-tip-txt"></div>
+      </div>
+    </div>
+    <!-- Timer v70 -->
+    <div class="rmodal-timer" id="rmodal-timer">
+      <div class="rmodal-timer-phase" id="rtimer-phase">Série 1</div>
+      <div class="rmodal-timer-ring">
+        <svg viewBox="0 0 88 88">
+          <circle cx="44" cy="44" r="36" fill="none" stroke="var(--renfo-border)" stroke-width="6"/>
+          <circle id="rtimer-arc" cx="44" cy="44" r="36" fill="none" stroke="var(--accent)" stroke-width="6"
+            stroke-dasharray="226.2" stroke-dashoffset="0" stroke-linecap="round"
+            transform="rotate(-90 44 44)" style="transition:stroke-dashoffset .9s linear,stroke .3s"/>
+          <text x="44" y="44" class="rmodal-timer-digits" id="rtimer-digits">0:00</text>
+        </svg>
+      </div>
+      <div class="rmodal-timer-info" id="rtimer-info"></div>
+      <div class="rmodal-timer-btns">
+        <button class="rtbtn-start" id="rtimer-btn" onclick="renfoTimerToggle()">▶ Démarrer</button>
+        <button class="rtbtn-skip" onclick="renfoTimerSkip()">⏭ Suivant</button>
       </div>
     </div>
     <button class="rmodal-close" id="rmodal-check-btn" onclick="checkRenfoFromModal()">✓ Marquer comme fait</button>
@@ -1597,7 +1630,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "69";
+const GENERATOR_VERSION = "70";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4845,9 +4878,168 @@ function updateTrainBadge(){
 // ── Renforcement : modale détail exercice ────────────────────────────────
 let _renfoModalExo = null; // exo courant affiché dans la modale
 
+// ── Timer renfo v70 ────────────────────────────────────────────────────────
+let _renfoTimer = null; // { interval, totalSec, remSec, phase:'effort'|'rest', serieIdx, totalSeries, effortSec, restSec, unilateral }
+
+function _renfoParseTimer(exo) {
+  // Extraire durée effort depuis exo.dur (ex: "20s", "1s haut", "30s", "3 × 30s")
+  // et repos depuis exo.rest (ex: "30s", "45s", "1min")
+  let effortSec = 0, restSec = 30;
+  if (exo.dur) {
+    const m = exo.dur.match(/(\d+)\s*s/i);
+    if (m) effortSec = parseInt(m[1]);
+  }
+  if (exo.rest) {
+    const ms = exo.rest.match(/(\d+)\s*s/i);
+    const mm = exo.rest.match(/(\d+)\s*min/i);
+    if (ms) restSec = parseInt(ms[1]);
+    else if (mm) restSec = parseInt(mm[1]) * 60;
+  }
+  // Nombre de séries depuis exo.sets (ex: "3 × 20s", "3 × 10/côté")
+  let totalSeries = 3;
+  if (exo.sets) {
+    const ms2 = exo.sets.match(/^(\d+)\s*[×x]/);
+    if (ms2) totalSeries = parseInt(ms2[1]);
+  }
+  // Unilatéral : "/côté" dans sets → doubler le nombre de demi-séries
+  const unilateral = /\/côté/i.test(exo.sets || '');
+  return { effortSec, restSec, totalSeries, unilateral };
+}
+
+function _renfoTimerArc(remSec, totalSec) {
+  const pct = totalSec > 0 ? Math.max(0, remSec / totalSec) : 0;
+  const circ = 2 * Math.PI * 36; // 226.2
+  document.getElementById('rtimer-arc').style.strokeDashoffset = (circ * (1 - pct)).toFixed(2);
+}
+
+function _renfoTimerRender() {
+  if (!_renfoTimer) return;
+  const t = _renfoTimer;
+  const m = Math.floor(t.remSec / 60), s = t.remSec % 60;
+  document.getElementById('rtimer-digits').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  _renfoTimerArc(t.remSec, t.phase === 'effort' ? t.effortSec : t.restSec);
+  // Phase label
+  let phaseLabel, infoLabel, arcColor;
+  if (t.phase === 'effort') {
+    const serieDisp = t.unilateral ? Math.ceil(t.serieIdx / 2) : t.serieIdx;
+    const totalDisp = t.unilateral ? Math.ceil(t.totalSeries / 2) : t.totalSeries;
+    const side = t.unilateral ? (t.serieIdx % 2 === 1 ? ' · Côté gauche' : ' · Côté droit') : '';
+    phaseLabel = `Série ${serieDisp}/${totalDisp}${side}`;
+    infoLabel = t.effortSec > 0 ? `Maintien ${t.effortSec}s` : 'Répétitions';
+    arcColor = 'var(--accent)';
+  } else {
+    phaseLabel = t.serieIdx <= t.totalSeries ? `Repos — série ${t.unilateral ? Math.ceil(t.serieIdx/2) : t.serieIdx} suivante` : 'Terminé !';
+    infoLabel = `Récupération ${t.restSec}s`;
+    arcColor = 'var(--renfo-pill-rest-fg, #2da55e)';
+  }
+  document.getElementById('rtimer-phase').textContent = phaseLabel;
+  document.getElementById('rtimer-info').textContent = infoLabel;
+  document.getElementById('rtimer-arc').style.stroke = arcColor;
+}
+
+function _renfoTimerNext() {
+  if (!_renfoTimer) return;
+  const t = _renfoTimer;
+  if (t.phase === 'effort') {
+    // Passer en repos si ce n'est pas la dernière série
+    if (t.serieIdx < t.totalSeries && t.restSec > 0) {
+      t.phase = 'rest';
+      t.remSec = t.restSec;
+    } else {
+      _renfoTimerDone();
+      return;
+    }
+  } else {
+    // Passer à la série suivante
+    t.serieIdx++;
+    if (t.serieIdx > t.totalSeries) { _renfoTimerDone(); return; }
+    t.phase = 'effort';
+    t.remSec = t.effortSec > 0 ? t.effortSec : 0;
+    if (t.effortSec === 0) {
+      // Pas de timer effort (répétitions libres) → juste afficher le label
+      _renfoTimerRender();
+      document.getElementById('rtimer-btn').textContent = '⏭ Série suivante';
+      return;
+    }
+  }
+  _renfoTimerRender();
+}
+
+function _renfoTimerDone() {
+  if (_renfoTimer && _renfoTimer.interval) clearInterval(_renfoTimer.interval);
+  _renfoTimer = null;
+  document.getElementById('rtimer-phase').textContent = '✓ Terminé !';
+  document.getElementById('rtimer-digits').textContent = '0:00';
+  document.getElementById('rtimer-info').textContent = '';
+  document.getElementById('rtimer-arc').style.strokeDashoffset = '226.2';
+  document.getElementById('rtimer-btn').textContent = '↺ Recommencer';
+  if (_renfoTimer === null) {
+    // remettre à zéro pour recommencer
+    document.getElementById('rtimer-btn').onclick = () => renfoTimerStart();
+  }
+}
+
+function renfoTimerToggle() {
+  if (!_renfoTimer) { renfoTimerStart(); return; }
+  if (_renfoTimer.interval) {
+    clearInterval(_renfoTimer.interval);
+    _renfoTimer.interval = null;
+    document.getElementById('rtimer-btn').textContent = '▶ Reprendre';
+  } else {
+    _renfoTimerRun();
+    document.getElementById('rtimer-btn').textContent = '⏸ Pause';
+  }
+}
+
+function renfoTimerSkip() {
+  if (!_renfoTimer) { renfoTimerStart(); return; }
+  if (_renfoTimer.interval) clearInterval(_renfoTimer.interval);
+  _renfoTimer.interval = null;
+  _renfoTimer.remSec = 0;
+  _renfoTimerNext();
+  if (_renfoTimer) _renfoTimerRun();
+}
+
+function _renfoTimerRun() {
+  if (!_renfoTimer) return;
+  _renfoTimer.interval = setInterval(() => {
+    if (!_renfoTimer) return;
+    _renfoTimer.remSec--;
+    _renfoTimerRender();
+    if (_renfoTimer.remSec <= 0) {
+      clearInterval(_renfoTimer.interval);
+      _renfoTimer.interval = null;
+      // Vibration courte si dispo
+      if (navigator.vibrate) navigator.vibrate([80, 50, 80]);
+      _renfoTimerNext();
+      if (_renfoTimer && _renfoTimer.phase !== undefined) _renfoTimerRun();
+    }
+  }, 1000);
+  document.getElementById('rtimer-btn').textContent = '⏸ Pause';
+}
+
+function renfoTimerStart() {
+  if (!_renfoModalExo) return;
+  const { effortSec, restSec, totalSeries, unilateral } = _renfoParseTimer(_renfoModalExo.exo);
+  _renfoTimer = { interval: null, effortSec, restSec, totalSeries, unilateral,
+    serieIdx: 1, phase: 'effort', remSec: effortSec > 0 ? effortSec : 1 };
+  _renfoTimerRender();
+  if (effortSec > 0) {
+    _renfoTimerRun();
+  } else {
+    // Mode reps : afficher la série, pas de compte à rebours
+    document.getElementById('rtimer-btn').textContent = '⏭ Série suivante';
+    document.getElementById('rtimer-btn').onclick = renfoTimerSkip;
+  }
+}
+
 function openRenfoModal(exo, exoKey, sessId, totalExos) {
   if (!exo) return;
   _renfoModalExo = {exo, exoKey, sessId, totalExos};
+  // Stop any running timer
+  if (_renfoTimer && _renfoTimer.interval) clearInterval(_renfoTimer.interval);
+  _renfoTimer = null;
+
   document.getElementById('rmodal-svg').innerHTML = exo.svg;
   document.getElementById('rmodal-name').textContent = exo.name;
   document.getElementById('rmodal-muscle').textContent = exo.muscle || '';
@@ -4858,6 +5050,33 @@ function openRenfoModal(exo, exoKey, sessId, totalExos) {
   const tipEl = document.getElementById('rmodal-tip');
   if (exo.tip) { tipEl.style.display=''; document.getElementById('rmodal-tip-txt').textContent = exo.tip; }
   else { tipEl.style.display='none'; }
+
+  // v70 — mention côté gauche/droit si unilatéral
+  const sideEl = document.getElementById('rmodal-side-note');
+  const isUnilateral = /\/côté/i.test(exo.sets || '');
+  if (isUnilateral) {
+    sideEl.textContent = '↔ Exercice bilatéral — faire chaque côté (gauche puis droit)';
+    sideEl.classList.add('show');
+  } else {
+    sideEl.classList.remove('show');
+  }
+
+  // v70 — timer : afficher si dur contient des secondes ou exercice chronométré
+  const { effortSec, restSec, totalSeries } = _renfoParseTimer(exo);
+  const timerEl = document.getElementById('rmodal-timer');
+  if (effortSec > 0 || /\/côté/i.test(exo.sets || '')) {
+    timerEl.classList.add('active');
+    // Réinitialiser l'affichage
+    document.getElementById('rtimer-phase').textContent = `Série 1/${totalSeries}`;
+    document.getElementById('rtimer-digits').textContent = effortSec > 0 ? `0:${effortSec.toString().padStart(2,'0')}` : '—';
+    document.getElementById('rtimer-info').textContent = effortSec > 0 ? `${effortSec}s effort · ${restSec}s repos` : 'Appuyez pour commencer';
+    document.getElementById('rtimer-btn').textContent = '▶ Démarrer';
+    document.getElementById('rtimer-btn').onclick = renfoTimerToggle;
+    _renfoTimerArc(effortSec, effortSec);
+  } else {
+    timerEl.classList.remove('active');
+  }
+
   // Bouton cocher
   const isDone = !!DONE[exoKey];
   const btn = document.getElementById('rmodal-check-btn');
@@ -4880,6 +5099,9 @@ function checkRenfoFromModal() {
 
 function closeRenfoModal(e) {
   if (e && e.target !== document.getElementById('renfo-modal')) return;
+  // v70 — arrêter le timer à la fermeture
+  if (_renfoTimer && _renfoTimer.interval) clearInterval(_renfoTimer.interval);
+  _renfoTimer = null;
   document.getElementById('renfo-modal').classList.remove('open');
   document.body.style.overflow = '';
 }
