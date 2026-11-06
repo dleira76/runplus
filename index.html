@@ -1597,7 +1597,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "68";
+const GENERATOR_VERSION = "69";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2581,17 +2581,16 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       if (!allureCible) {
         return buildFracSession('specifique', Z, vma, index, dist, phase, phasePos, allureCible);
       }
-      // Séance allure course : 3 blocs progressifs à allure cible, durée croissante en phase3
-      // Min 45min, jusqu'à 65min en fin de phase (Pfitzinger : 3×10-20min à allure marathon)
-      const durMin = Math.min(45 + Math.round(phasePos * 20), 65);
+      // v69 fix S13 : séance race_pace plafonnée à 2 blocs (30 min) pour éviter cumul
+      // avec les blocs allure de la SL (Pfitzinger : 50-90 min/sem à allure marathon max)
+      // Min 30min (2×15), jusqu'à 45min en fin de phase (jamais 3 blocs ici)
+      const durMin = Math.min(30 + Math.round(phasePos * 15), 45);
       const pacePer = fmtPace(allureCible);
-      const blocDur = Math.round(durMin / 3);
+      const blocDur = Math.round(durMin / 2);
       steps.push(
-        { t: 'active', d: blocDur, txt: `Bloc 1/3 · ${blocDur}min progressif · finir à ${fmtSpeed(allureCible)} · ${pacePer}/km` },
+        { t: 'active', d: blocDur, txt: `Bloc 1/2 · ${blocDur}min progressif · finir à ${fmtSpeed(allureCible)} · ${pacePer}/km` },
         { t: 'rest',   d: 3,       txt: 'Récupération 3min footing très lent' },
-        { t: 'qual',   d: blocDur, txt: `Bloc 2/3 · ${blocDur}min à allure cible · ${fmtSpeed(allureCible)} · ${pacePer}/km` },
-        { t: 'rest',   d: 3,       txt: 'Récupération 3min footing très lent' },
-        { t: 'qual',   d: blocDur, txt: `Bloc 3/3 · ${blocDur}min à allure cible · ${fmtSpeed(allureCible)} · ${pacePer}/km · concentration sur la foulée` }
+        { t: 'qual',   d: blocDur, txt: `Bloc 2/2 · ${blocDur}min à allure cible · ${fmtSpeed(allureCible)} · ${pacePer}/km · concentration sur la foulée` }
       );
       break;
     }
@@ -2928,8 +2927,9 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
         sessions.push({ type:'footing', title:'Footing + accélérations', steps: footAccSteps });
       }
       // 3. Footing endurance supplémentaire — seulement si > 3 séances
+      // v69 fix S17 : footing S-2 réduit à 30 min (au lieu de 40) pour accentuer l'affûtage
       if (sessions.length < effectiveSessions - 1) {
-        sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
+        sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 30) });
       }
       // 4. Sortie longue affûtage — volume réduit S-2 (Pfitzinger : -30% vs semaine pic)
       const slTaperMin = dist >= 42 ? 75 : 60;
@@ -3013,15 +3013,18 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
   }
 
   // 4. Sortie longue EN DERNIER (fin de semaine, charge maximale)
-  // Blocs allure cible : uniquement en phase3, et progressivement (25% → 35% de la SL)
+  // Blocs allure cible : uniquement en phase3, et seulement si la semaine N'A PAS déjà
+  // une séance qualitative intensive (frac/specific) — v69 fix S14 (Pfitzinger : alterner)
   // En phase2 : SL en endurance pure — construire le temps sur pied avant d'ajouter l'allure
   if (longMin > 0) {
     let blocsMin = 0;
-    if (phase === 'phase3') {
-      // Phase3 : blocs allure progressifs, de 20% à 35% de la SL selon avancement
+    const hasQualSess = runSessions.some(s => s.type === 'frac' || s.type === 'specific');
+    if (phase === 'phase3' && !hasQualSess) {
+      // Phase3 sans séance qualitative : SL avec blocs allure progressifs (20% → 35%)
       const blocsRatio = 0.20 + phasePos * 0.15;
       blocsMin = Math.floor(longMin * blocsRatio);
     }
+    // Phase3 avec séance frac/specific : SL en endurance pure (pas de double stress qualitatif)
     runSessions.push({ type:'long', title: blocsMin > 0 ? 'Sortie longue avec blocs allure' : 'Sortie longue endurance', steps: longRunSteps(Z, longMin, blocsMin, qualIdx, allureCible) });
   } else if (runSessions.length < effectiveSessions) {
     runSessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
