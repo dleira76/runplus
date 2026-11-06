@@ -3717,8 +3717,14 @@ function renderPlan(prog){
   document.getElementById('planTitle').textContent=raceName||distName(dist);
   const gb=document.getElementById('planGoalBadge');
   gb.textContent='Objectif '+goalTime; gb.style.display='inline-block';
+  // debug v72 — afficher VMA réelle et source pour diagnostic
+  const _gs = prog.goalSec||0;
+  const _rVMA = prog.raceEvents&&prog.raceEvents.length>0 ? bestRaceVMA(prog.raceEvents) : null;
+  const _gVMA = !_rVMA && _gs>0 && dist ? estimateVMAFromGoal(dist, _gs) : null;
+  const _vmaCalc = _rVMA || _gVMA || estimateVMA(speed);
+  const _src = _rVMA ? 'courses' : _gVMA ? 'objectif' : 'footing';
   document.getElementById('planMeta').textContent=
-    `Programme sur mesure . ${days} séances / semaine . ${weeks.length} semaines . ${raceName||distName(dist)}, ${humanDate(raceDate)}`;
+    `Programme sur mesure . ${days} séances / semaine . ${weeks.length} semaines . ${raceName||distName(dist)}, ${humanDate(raceDate)} · 🔍 VMA: ${vma}→${_vmaCalc} (${_src}, gs=${_gs})`;
 
   // Warning VMA : vérifier si l'objectif est réaliste
   const vmaWarnEl = document.getElementById('vmaWarn') || (()=>{
