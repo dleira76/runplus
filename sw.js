@@ -1,5 +1,5 @@
 const CACHE = 'runplan-v64';
-const ASSETS = ['/runplus/', '/runplus/index.html', '/runplus/manifest.json', '/runplus/icon-192.png', '/runplus/icon-512.png'];
+const ASSETS = ['/runplus/', '/runplus/index.html', '/runplus/sw.js', '/runplus/manifest.json', '/runplus/icon-192.png', '/runplus/icon-512.png'];
 
 self.addEventListener('install', e => {
   self.skipWaiting();
@@ -10,11 +10,11 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-     .then(() => self.clients.matchAll({ type: 'window' }))
-     .then(clients => clients.forEach(c => c.navigate(c.url)))
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then(clients => clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' })))
   );
 });
 

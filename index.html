@@ -5689,10 +5689,13 @@ function openPartialQuestionnaire(saved, missingFields){
 </script>
 <script>
 if('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(()=>{});
-  navigator.serviceWorker.addEventListener('message', e => {
-    if(e.data && e.data.type === 'SW_DEAD') window.location.reload(true);
-  });
+  // Scope explicite /runplus/ pour que le SW contrôle bien les pages de l'app
+  navigator.serviceWorker.register('/runplus/sw.js', { scope: '/runplus/' })
+    .then(reg => {
+      // Vérifier si une mise à jour est disponible toutes les 60s (au lieu d'attendre une navigation)
+      setInterval(() => reg.update(), 60000);
+    })
+    .catch(() => {});
   // Recharger automatiquement quand le SW signale une mise à jour
   navigator.serviceWorker.addEventListener('message', e => {
     if(e.data && e.data.type === 'SW_UPDATED') window.location.reload();
