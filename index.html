@@ -1244,9 +1244,10 @@ Temps réaliste estimé : <strong>${realist}</strong><br>
  */
 function raceVMA(distKm, timeSec, denivelM){
   if(!distKm||!timeSec||timeSec<=0) return null;
-  // Corriger le temps pour le dénivelé : +1 min pour 100m D+
+  // Corriger le temps pour le dénivelé : règle Naismith ~1 min / 10m D+
+  // soit environ 10 min / 100m D+ (bien plus précis que l'ancienne règle Strava de 1 min/100m)
   const denil = denivelM||0;
-  const correctedSec = Math.max(timeSec - (denil/100)*60, timeSec * 0.7);
+  const correctedSec = Math.max(timeSec - (denil * 6), timeSec * 0.7);
   // Extrapoler vers 3 km (référence VMA)
   const t3km = correctedSec * Math.pow(3 / distKm, 1.06);
   const vma = 3 / (t3km / 3600);
@@ -1644,7 +1645,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "73";
+const GENERATOR_VERSION = "74";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
