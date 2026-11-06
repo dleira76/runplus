@@ -820,7 +820,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   <div class="plan-header">
     <div class="plan-header-top">
       <button class="btn-home" onclick="goHome()" title="Accueil">🏠</button>
-      <div style="flex:1;min-width:0">
+      <div style="flex:1;min-width:0;text-align:left">
         <h2 id="planTitle">Mon programme</h2>
         <div class="plan-goal-badge" id="planGoalBadge" style="display:none"></div>
         <div class="plan-meta" id="planMeta"></div>
@@ -3723,7 +3723,7 @@ function renderPlan(prog){
   // Warning VMA : vérifier si l'objectif est réaliste
   const vmaWarnEl = document.getElementById('vmaWarn') || (()=>{
     const el=document.createElement('div'); el.id='vmaWarn';
-    el.style.cssText='margin:12px 0;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;text-align:left;';
+    el.style.cssText='margin:12px 0;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;text-align:left;width:100%;box-sizing:border-box;';
     document.getElementById('planMeta').after(el); return el;
   })();
   if(allureCible && vma){
