@@ -1082,6 +1082,16 @@ function distName(d){ return {5:'5 km', 10:'10 km', 21.1:'Semi-marathon', 42.2:'
 // =======================================================================
 function estimateVMA(cruiseKmh){ return Math.round(cruiseKmh / 0.72 * 10) / 10; }
 
+// v71 — VMA depuis objectif course (Daniels : allure marathon ≈ 76% VMA pour marathon, 88% pour 10k, etc.)
+// Plus fiable que depuis footing déclaré car le footing sous-estime systématiquement la VMA réelle
+const RACE_VMA_RATIO = { 5: 0.95, 10: 0.90, 21.1: 0.83, 42.2: 0.76 };
+function estimateVMAFromGoal(dist, goalSec) {
+  if (!dist || !goalSec || goalSec <= 0) return null;
+  const ratio = RACE_VMA_RATIO[dist] || RACE_VMA_RATIO[42.2];
+  const goalKmh = dist / (goalSec / 3600);
+  return Math.round(goalKmh / ratio * 10) / 10;
+}
+
 function calcZones(vma, allureCible, dist){
   return {
     z1: { min:+(vma*0.60).toFixed(1), max:+(vma*0.72).toFixed(1), label:'Z1 - Endurance fondamentale' },
@@ -1141,12 +1151,15 @@ function selectChip(el,group){
 
 function updateVMAPreview(){
   const el=document.getElementById('vmaPreview');
-  if(!Q.speed){ el.style.display='none'; return; }
-  const vma=estimateVMA(Q.speed);
+  if(!Q.speed && !Q.goalSec){ el.style.display='none'; return; }
+  // v71 — VMA depuis objectif si disponible, sinon depuis footing
+  const goalVMAprev = Q.goalSec && Q.dist ? estimateVMAFromGoal(Q.dist, Q.goalSec) : null;
+  const vma = window._raceVMAval || goalVMAprev || estimateVMA(Q.speed||7);
+  const src = window._raceVMAval ? 'courses passées' : goalVMAprev ? 'objectif course' : 'allure footing';
   const z=calcZones(vma,0,null);
   el.style.display='block';
-  el.innerHTML=`<strong>VMA estimée ≈ ${vma} km/h</strong><br>
-Z1 EF <span class="vma-zone vz-z1">${(+z.z1.min).toFixed(1)}-${(+z.z1.max).toFixed(1)} km/h</span> . ${kmhToMinKm(z.z1.min)}-${kmhToMinKm(z.z1.max)}<br>
+  el.innerHTML=`<strong>VMA estimée ≈ ${vma} km/h</strong> <span style="font-size:11px;opacity:.65">(depuis ${src})</span><br>
+Z1 EF <span class="vma-zone vz-z1">${(+z.z1.min).toFixed(1)}-${(+z.z1.max).toFixed(1)} km/h</span> · ${kmhToMinKm(z.z1.min)}-${kmhToMinKm(z.z1.max)}<br>
 Z2 Endurance <span class="vma-zone vz-z2">${(+z.z2.min).toFixed(1)}-${(+z.z2.max).toFixed(1)} km/h</span><br>
 Z3 Seuil <span class="vma-zone vz-z3">${(+z.z3.min).toFixed(1)}-${(+z.z3.max).toFixed(1)} km/h</span><br>
 Z4 VMA <span class="vma-zone vz-z4">${(+z.z4.min).toFixed(1)}-${(+z.z4.max).toFixed(1)} km/h</span>`;
@@ -1182,10 +1195,11 @@ function checkGoalViability(){
   const alertEl=document.getElementById('qAlert'); const warnEl=document.getElementById('qWarn');
   alertEl.className='q-alert'; warnEl.className='q-warn';
   Q._goalUnrealistic=false;
-  if(!Q.goalSec||!Q.speed||!Q.dist) return;
-  const vma=estimateVMA(Q.speed);
+  if(!Q.goalSec||!Q.dist) return;
+  // v71 — VMA depuis objectif ou courses passées, pas footing
+  const goalVMAcheck = estimateVMAFromGoal(Q.dist, Q.goalSec);
   const raceVMAval=window._raceVMAval||null;
-  const effectiveVma=raceVMAval||vma;
+  const effectiveVma=raceVMAval||goalVMAcheck||estimateVMA(Q.speed||7);
   const gspd=goalSpeedKmh(Q.dist,Q.goalSec);
   const ratio=gspd/effectiveVma;
   const maxRatio=viabilityRatio(Q.dist);
@@ -1630,7 +1644,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "70";
+const GENERATOR_VERSION = "71";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3107,9 +3121,11 @@ function generateProgram(){
     else if(_p.length===2) gs=(+_p[0])*3600+(+_p[1])*60;
   }
 
-  // VMA : utiliser la meilleure valeur calculée depuis les courses passées si disponible
+  // VMA — priorité : 1) courses passées saisies  2) objectif course  3) footing déclaré
+  // v71 : partir de l'objectif est plus fiable que le footing (Daniels : marathon ≈ 76% VMA)
   const raceVMAval = Q.raceEvents && Q.raceEvents.length > 0 ? bestRaceVMA(Q.raceEvents) : null;
-  const vma = raceVMAval || estimateVMA(Q.speed);
+  const goalVMA = !raceVMAval && Q.goalSec && Q.dist ? estimateVMAFromGoal(Q.dist, Q.goalSec) : null;
+  const vma = raceVMAval || goalVMA || estimateVMA(Q.speed);
   const index = calcIndex(vma);
   const Z = calcZonesV2(vma, gs>0 ? goalSpeedKmh(Q.dist, gs) : null, Q.dist);
   const allureCible = gs>0 ? goalSpeedKmh(Q.dist, gs) : null;
