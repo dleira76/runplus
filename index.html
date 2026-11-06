@@ -1597,7 +1597,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "67";
+const GENERATOR_VERSION = "68";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3131,10 +3131,15 @@ function generateProgram(){
         if(Q.days>=4) s.push({type:'recup',title:'Récupération post-course',steps:recupSteps(Z)});
       } else {
         // Semaine course test classique (allure réduite, pas une vraie course)
+        // v68 fix S10→S11 : on conserve une SL courte (65% du volume normal) pour éviter la coupure
         if(Q.days>=5) s.push({type:'recup',title:'Récupération active',steps:recupSteps(Z)});
         s.push({type:'footing',title:'Footing endurance',steps:footingSteps(Z,40)});
         if(Q.days>=3) s.push({type:'preprace',title:'Course préparatoire',steps:prepRaceSteps(Z,Q.dist,allureCible)});
         if(Q.days>=4) s.push({type:'footing',title:'Footing doux',steps:footingSteps(Z,30)});
+        // SL réduite : 80% du volume prévu cette semaine — pont entre décharge et semaine suivante
+        // borne : 55 min min (jamais trop court), 95 min max (semaine déjà chargée avec course test)
+        const prepLongMin = Math.min(95, Math.max(55, Math.round((longSched[i]||80) * 0.80 * injMod)));
+        s.push({type:'long',title:'Sortie longue modérée (semaine test)',steps:longRunSteps(Z,prepLongMin,0,qualIdx,null)});
         // Renfo en semaine course test : 1 seul renfo (semaine déjà chargée avec course test)
         if(Q.dist>=21){
           const _wpPhase = getWeekPhase(i, phaseConfig);
