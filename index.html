@@ -97,7 +97,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .plan-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}
 .plan-header h2{font-size:22px;font-weight:800;line-height:1.15;color:var(--fg)}
 .plan-goal-badge{display:inline-block;background:var(--accent);color:#fff;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:4px 10px;border-radius:6px;margin-bottom:6px}
-.plan-meta{font-size:12px;color:var(--fg-muted);margin-top:4px;line-height:1.6}
+.plan-meta{font-size:12px;color:var(--fg-muted);margin-top:4px;line-height:1.6;text-align:left;text-wrap:initial}
 .plan-header-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
 .plan-hdr-group{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .plan-hdr-sep{width:1px;height:28px;background:var(--border);margin:0 2px;flex-shrink:0}
@@ -1644,7 +1644,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "71";
+const GENERATOR_VERSION = "72";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3124,7 +3124,7 @@ function generateProgram(){
   // VMA — priorité : 1) courses passées saisies  2) objectif course  3) footing déclaré
   // v71 : partir de l'objectif est plus fiable que le footing (Daniels : marathon ≈ 76% VMA)
   const raceVMAval = Q.raceEvents && Q.raceEvents.length > 0 ? bestRaceVMA(Q.raceEvents) : null;
-  const goalVMA = !raceVMAval && Q.goalSec && Q.dist ? estimateVMAFromGoal(Q.dist, Q.goalSec) : null;
+  const goalVMA = !raceVMAval && gs > 0 && Q.dist ? estimateVMAFromGoal(Q.dist, gs) : null;
   const vma = raceVMAval || goalVMA || estimateVMA(Q.speed);
   const index = calcIndex(vma);
   const Z = calcZonesV2(vma, gs>0 ? goalSpeedKmh(Q.dist, gs) : null, Q.dist);
@@ -3723,7 +3723,7 @@ function renderPlan(prog){
   // Warning VMA : vérifier si l'objectif est réaliste
   const vmaWarnEl = document.getElementById('vmaWarn') || (()=>{
     const el=document.createElement('div'); el.id='vmaWarn';
-    el.style.cssText='margin:12px 0;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;';
+    el.style.cssText='margin:12px 0;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;text-align:left;';
     document.getElementById('planMeta').after(el); return el;
   })();
   if(allureCible && vma){
@@ -5845,21 +5845,18 @@ function loadFile(e){
       saveProg(PROG);saveDone();saveTrain();saveRaceHistory();
       // Restaurer intermediateRace dans Q
       if(PROG.intermediateRace) Q.intermediateRace=PROG.intermediateRace;
-      // Régénérer si version obsolète
-      if(PROG.generatorVersion !== GENERATOR_VERSION){
-        try {
-          restoreQFromSaved(PROG);
-          if(!Q.dist || !Q.raceDate || !Q.speed) throw new Error('missing_fields');
-          const newProg = generateProgram();
-          if(!newProg || !newProg.weeks || newProg.weeks.length === 0) throw new Error('empty_prog');
-          newProg.generatorVersion = GENERATOR_VERSION;
-          saveProg(newProg);
-          PROG = newProg;
-          renderPlan(newProg);showScreen('screen-plan');toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓');
-        } catch(e) {
-          renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
-        }
-      } else {
+      // Toujours regénérer à l'import pour recalculer VMA/zones depuis l'objectif (v72)
+      try {
+        restoreQFromSaved(PROG);
+        if(!Q.dist || !Q.raceDate || !Q.speed) throw new Error('missing_fields');
+        const newProg = generateProgram();
+        if(!newProg || !newProg.weeks || newProg.weeks.length === 0) throw new Error('empty_prog');
+        newProg.generatorVersion = GENERATOR_VERSION;
+        saveProg(newProg);
+        PROG = newProg;
+        const wasUpdated = payload.prog.generatorVersion !== GENERATOR_VERSION;
+        renderPlan(newProg);showScreen('screen-plan');toast(wasUpdated ? '🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓' : 'Chargé ✓');
+      } catch(e) {
         renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
       }
     }catch(err){alert('Fichier invalide.');}
