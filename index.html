@@ -3858,6 +3858,9 @@ function buildSessHTML(sess,wn,si){
                     || st.exo;
       const exoAvecSvgActuel = Object.assign({}, st.exo, { svg: livreExo.svg });
       window._RENFO_EXO[exoKey] = exoAvecSvgActuel;
+      // v70b — index ordonné pour passage automatique entre exercices
+      window._RENFO_ORDER = window._RENFO_ORDER || {};
+      window._RENFO_ORDER[exoKey] = { sessId: sess.id, idx: ei, total: totalExos };
       return`<div class="renfo-exo${exoDone?' renfo-exo-done':''}" id="exo-${exoKey}" onclick="openRenfoModal(window._RENFO_EXO['${exoKey}'],'${exoKey}','${sess.id}',${totalExos})">
         <div class="renfo-hdr">
           ${livreExo.svg}
@@ -4945,42 +4948,99 @@ function _renfoTimerNext() {
     if (t.serieIdx < t.totalSeries && t.restSec > 0) {
       t.phase = 'rest';
       t.remSec = t.restSec;
+      _renfoTimerRender();
+      // Toujours démarrer le compte à rebours du repos (même en mode reps)
+      _renfoTimerRun();
     } else {
       _renfoTimerDone();
-      return;
     }
   } else {
-    // Passer à la série suivante
+    // Fin du repos → passer à la série suivante
     t.serieIdx++;
     if (t.serieIdx > t.totalSeries) { _renfoTimerDone(); return; }
     t.phase = 'effort';
     t.remSec = t.effortSec > 0 ? t.effortSec : 0;
-    if (t.effortSec === 0) {
-      // Pas de timer effort (répétitions libres) → juste afficher le label
-      _renfoTimerRender();
-      document.getElementById('rtimer-btn').textContent = '⏭ Série suivante';
-      return;
+    _renfoTimerRender();
+    if (t.effortSec > 0) {
+      // Mode chrono → démarrer automatiquement
+      _renfoTimerRun();
+    } else {
+      // Mode reps → attendre que l'utilisateur appuie
+      document.getElementById('rtimer-btn').textContent = '✓ Série faite → Repos';
+      document.getElementById('rtimer-btn').onclick = renfoTimerSkip;
     }
   }
-  _renfoTimerRender();
 }
+
+const RENFO_INTER_EXO_REST = 90; // secondes de repos entre deux exercices
 
 function _renfoTimerDone() {
   if (_renfoTimer && _renfoTimer.interval) clearInterval(_renfoTimer.interval);
   _renfoTimer = null;
-  document.getElementById('rtimer-phase').textContent = '✓ Terminé !';
-  document.getElementById('rtimer-digits').textContent = '0:00';
-  document.getElementById('rtimer-info').textContent = '';
-  document.getElementById('rtimer-arc').style.strokeDashoffset = '226.2';
-  document.getElementById('rtimer-btn').textContent = '↺ Recommencer';
-  if (_renfoTimer === null) {
-    // remettre à zéro pour recommencer
+  if (navigator.vibrate) navigator.vibrate([100, 60, 100, 60, 200]);
+
+  // v70b — chercher l'exercice suivant dans la séance
+  const cur = _renfoModalExo;
+  const order = window._RENFO_ORDER && cur ? window._RENFO_ORDER[cur.exoKey] : null;
+  const nextIdx = order ? order.idx + 1 : null;
+  const nextKey = order && nextIdx < order.total ? `${order.sessId}_exo${nextIdx}` : null;
+  const nextExo = nextKey && window._RENFO_EXO ? window._RENFO_EXO[nextKey] : null;
+
+  if (nextExo) {
+    // Afficher le repos inter-exercice avec compte à rebours, puis ouvrir le suivant
+    document.getElementById('rtimer-phase').textContent = `✓ Exercice terminé !`;
+    document.getElementById('rtimer-info').textContent = `Repos avant : ${nextExo.name}`;
+    document.getElementById('rtimer-arc').style.stroke = 'var(--renfo-pill-rest-fg, #2da55e)';
+    document.getElementById('rtimer-btn').textContent = '⏭ Passer le repos';
+    document.getElementById('rtimer-btn').onclick = () => _renfoOpenNext(nextExo, nextKey, cur.sessId, order.total);
+
+    // Lancer le compte à rebours du repos inter-exercice
+    _renfoTimer = { interval: null, effortSec: 0, restSec: RENFO_INTER_EXO_REST,
+      totalSeries: 0, unilateral: false, serieIdx: 0,
+      phase: 'inter_rest', remSec: RENFO_INTER_EXO_REST,
+      _nextExo: nextExo, _nextKey: nextKey, _sessId: cur.sessId, _total: order.total };
+    _renfoTimerArc(RENFO_INTER_EXO_REST, RENFO_INTER_EXO_REST);
+    _renfoTimer.interval = setInterval(() => {
+      if (!_renfoTimer) return;
+      _renfoTimer.remSec--;
+      const m = Math.floor(_renfoTimer.remSec / 60), s = _renfoTimer.remSec % 60;
+      document.getElementById('rtimer-digits').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+      _renfoTimerArc(_renfoTimer.remSec, RENFO_INTER_EXO_REST);
+      if (_renfoTimer.remSec <= 0) {
+        clearInterval(_renfoTimer.interval);
+        _renfoTimer = null;
+        if (navigator.vibrate) navigator.vibrate([80, 50, 80]);
+        _renfoOpenNext(nextExo, nextKey, cur.sessId, order.total);
+      }
+    }, 1000);
+    const m0 = Math.floor(RENFO_INTER_EXO_REST / 60), s0 = RENFO_INTER_EXO_REST % 60;
+    document.getElementById('rtimer-digits').textContent = `${m0}:${s0.toString().padStart(2,'0')}`;
+  } else {
+    // Dernier exercice — fin de séance
+    document.getElementById('rtimer-phase').textContent = '🎉 Séance terminée !';
+    document.getElementById('rtimer-digits').textContent = '—';
+    document.getElementById('rtimer-info').textContent = 'Tous les exercices sont faits';
+    document.getElementById('rtimer-arc').style.strokeDashoffset = '226.2';
+    document.getElementById('rtimer-btn').textContent = '↺ Recommencer';
     document.getElementById('rtimer-btn').onclick = () => renfoTimerStart();
   }
 }
 
+function _renfoOpenNext(nextExo, nextKey, sessId, total) {
+  if (_renfoTimer && _renfoTimer.interval) clearInterval(_renfoTimer.interval);
+  _renfoTimer = null;
+  // Ouvrir la modale avec le prochain exercice et démarrer son timer
+  openRenfoModal(nextExo, nextKey, sessId, total);
+  // Démarrer le timer automatiquement après un court délai (modale ouverte)
+  setTimeout(() => renfoTimerStart(), 400);
+}
+
 function renfoTimerToggle() {
   if (!_renfoTimer) { renfoTimerStart(); return; }
+  // Mode reps (effortSec = 0, phase effort) → le bouton = "Série faite" → géré par renfoTimerSkip
+  if (_renfoTimer.effortSec === 0 && _renfoTimer.phase === 'effort') {
+    renfoTimerSkip(); return;
+  }
   if (_renfoTimer.interval) {
     clearInterval(_renfoTimer.interval);
     _renfoTimer.interval = null;
@@ -5022,13 +5082,13 @@ function renfoTimerStart() {
   if (!_renfoModalExo) return;
   const { effortSec, restSec, totalSeries, unilateral } = _renfoParseTimer(_renfoModalExo.exo);
   _renfoTimer = { interval: null, effortSec, restSec, totalSeries, unilateral,
-    serieIdx: 1, phase: 'effort', remSec: effortSec > 0 ? effortSec : 1 };
+    serieIdx: 1, phase: 'effort', remSec: effortSec > 0 ? effortSec : 0 };
   _renfoTimerRender();
   if (effortSec > 0) {
     _renfoTimerRun();
   } else {
-    // Mode reps : afficher la série, pas de compte à rebours
-    document.getElementById('rtimer-btn').textContent = '⏭ Série suivante';
+    // Mode reps : pas de compte à rebours — bouton = "Série faite → repos"
+    document.getElementById('rtimer-btn').textContent = '✓ Série faite → Repos';
     document.getElementById('rtimer-btn').onclick = renfoTimerSkip;
   }
 }
@@ -5061,21 +5121,23 @@ function openRenfoModal(exo, exoKey, sessId, totalExos) {
     sideEl.classList.remove('show');
   }
 
-  // v70 — timer : afficher si dur contient des secondes ou exercice chronométré
+  // v70 — timer : TOUJOURS affiché pour tous les exercices renfo
   const { effortSec, restSec, totalSeries } = _renfoParseTimer(exo);
   const timerEl = document.getElementById('rmodal-timer');
-  if (effortSec > 0 || /\/côté/i.test(exo.sets || '')) {
-    timerEl.classList.add('active');
-    // Réinitialiser l'affichage
-    document.getElementById('rtimer-phase').textContent = `Série 1/${totalSeries}`;
-    document.getElementById('rtimer-digits').textContent = effortSec > 0 ? `0:${effortSec.toString().padStart(2,'0')}` : '—';
-    document.getElementById('rtimer-info').textContent = effortSec > 0 ? `${effortSec}s effort · ${restSec}s repos` : 'Appuyez pour commencer';
-    document.getElementById('rtimer-btn').textContent = '▶ Démarrer';
-    document.getElementById('rtimer-btn').onclick = renfoTimerToggle;
-    _renfoTimerArc(effortSec, effortSec);
+  timerEl.classList.add('active');
+  // Réinitialiser l'affichage
+  const seriesDisp = _renfoParseTimer(exo).unilateral ? Math.ceil(totalSeries/2) : totalSeries;
+  document.getElementById('rtimer-phase').textContent = `Série 1/${seriesDisp}`;
+  if (effortSec > 0) {
+    document.getElementById('rtimer-digits').textContent = `0:${effortSec.toString().padStart(2,'0')}`;
+    document.getElementById('rtimer-info').textContent = `${effortSec}s maintien · repos ${restSec}s`;
   } else {
-    timerEl.classList.remove('active');
+    document.getElementById('rtimer-digits').textContent = '—';
+    document.getElementById('rtimer-info').textContent = `Repos ${restSec}s entre les séries`;
   }
+  document.getElementById('rtimer-btn').textContent = effortSec > 0 ? '▶ Démarrer' : '⏭ Série 1 — appuyer quand prêt';
+  document.getElementById('rtimer-btn').onclick = renfoTimerToggle;
+  _renfoTimerArc(effortSec, Math.max(effortSec, 1));
 
   // Bouton cocher
   const isDone = !!DONE[exoKey];
