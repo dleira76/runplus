@@ -1,4 +1,4 @@
-const CACHE = 'runplan-v64';
+const CACHE = 'runplan-v65';
 const ASSETS = ['/runplus/', '/runplus/index.html', '/runplus/sw.js', '/runplus/manifest.json', '/runplus/icon-192.png', '/runplus/icon-512.png'];
 
 self.addEventListener('install', e => {
