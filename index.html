@@ -1886,7 +1886,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "90";
+const GENERATOR_VERSION = "92";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4193,7 +4193,7 @@ function buildSessHTML(sess,wn,si){
     const today=new Date().toISOString().slice(0,10);
     const canEnterResult=sess.date&&sess.date<=today;
     const btnResult=canEnterResult&&!hasResult?`<button onclick="openVmaResultModal('${sess.id}')" style="margin-top:10px;padding:8px 16px;border-radius:8px;border:none;background:#6b35b0;color:#fff;font-size:13px;font-weight:700;cursor:pointer">📊 Entrer mon résultat</button>`:'';
-    const btnTimeline=!hasResult?`<button onclick="openTL('${sess.id}')" class="tl-btn" style="margin-top:10px;margin-left:8px">⏱ Timeline</button>`:'';
+    const btnTimeline=proto==='tapis'&&!hasResult?`<button onclick="openTL('${sess.id}')" class="tl-btn" style="margin-top:10px;margin-left:8px">⏱ Timeline</button>`:'';
     const btnDelete=`<button onclick="deleteVmaTest('${sess.id}')" style="margin-top:10px;margin-left:8px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--fg-muted);font-size:12px;cursor:pointer">Supprimer</button>`;
     return `<div class="sess-row" id="sess-${sess.id}" style="border-left:3px solid #6b35b0;background:linear-gradient(to right,#f8f4ff,var(--surface))">
       <div style="padding:12px 14px">
@@ -4203,7 +4203,7 @@ function buildSessHTML(sess,wn,si){
           <span style="font-size:11px;color:var(--fg-muted);margin-left:auto">${sess.date?humanDate(sess.date):''}</span>
         </div>
         <div style="font-size:12.5px;color:var(--fg-muted);margin-bottom:4px">Protocole : <strong>${protoLabel}</strong></div>
-        <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">${proto==='vameval'?'Piste 200–400 m · Paliers +0,5 km/h / minute · S\'arrêter à épuisement · VMA = dernière vitesse tenue':'Tapis à 1 % · Départ confortable · +0,5 ou 1 km/h / minute · Arrêt à épuisement · VMA = dernière vitesse maintenue'}</div>
+        <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">${proto==='vameval'?'Piste 200–400 m · Paliers +0,5 km/h / minute · S\'arrêter à épuisement · VMA = dernière vitesse tenue':'Tapis · Échauffement 3 min à 6 km/h · Paliers de 3 min · +1 km/h à chaque palier · Pente 1 % · Arrêt à épuisement'}</div>
         ${resultBadge}
         <div>${btnResult}${btnTimeline}${btnDelete}</div>
       </div>
@@ -5080,15 +5080,15 @@ const ANNOUNCE_AHEAD=10, BEEP_AHEAD=5;
 
 function findSess(id){for(const w of PROG.weeks){const s=w.sessions.find(s=>s.id===id);if(s)return s;}return null;}
 
-// Génère les steps standard pour le test VMA tapis (Léger & Boucher)
-// paliers 8–22 km/h, 2 min chacun — durée variable selon quand l'user arrête
+// Génère les steps standard pour le test VMA tapis (Machado 2022 / protocole Vpeak)
+// Échauffement 3 min à 6 km/h · paliers 8–22 km/h de 3 min chacun · pente 1 % constante
 function buildVmaTestSteps(){
   const steps=[];
-  // Échauffement marche 3 min avant de commencer
-  steps.push({t:'warm',d:3,txt:'Échauffement — marche active 3 min · tapis à 1 % · prépare-toi',s:'< 6 km/h'});
+  // Échauffement documenté : 3 min à 6 km/h, pente 1 % (Machado et al. 2022)
+  steps.push({t:'warm',d:3,txt:'Échauffement — 3 min à 6 km/h · pente 1 % · marche active',s:'6.0 km/h'});
   for(let p=1;p<=15;p++){
     const spd=(VT_START+(p-1)*VT_STEP).toFixed(1);
-    steps.push({t:'qual',d:2,txt:`Palier ${p} — ${spd} km/h · tapis à 1 %`,s:`${spd} km/h`});
+    steps.push({t:'qual',d:3,txt:`Palier ${p} — ${spd} km/h · pente 1 % · 3 min`,s:`${spd} km/h`});
   }
   return steps;
 }
@@ -5235,7 +5235,8 @@ function chronoTick(){
   for(let i=0;i<TL_STEPS.length;i++){if(elSec<TL_STEPS[i].endSec){ai=i;break;}}
   if(ai!==_curStep){_curStep=ai;hlStep(ai);}
   checkAnnounce(elSec);
-  if(elSec>=TL_TOTAL&&TL_TOTAL>0){chronoToggle();announce('Séance terminée ! 🎉');if(_voiceEnabled)speakStep('Séance terminée. Bravo !');}
+  // vma_test : pas de stop automatique (durée variable selon l'effort)
+  if(elSec>=TL_TOTAL&&TL_TOTAL>0&&TL_SESS&&TL_SESS.type!=='vma_test'){chronoToggle();announce('Séance terminée ! 🎉');if(_voiceEnabled)speakStep('Séance terminée. Bravo !');}
 }
 
 function checkAnnounce(elSec){
@@ -5273,13 +5274,14 @@ function announce(text){
 // v89 — arrêter le test VMA depuis la Timeline et ouvrir la saisie résultat
 function vmaStopFromTL(){
   if(_running) chronoToggle(); // pause le chrono
-  // Vitesse du step actif (ou dernier step si chrono dépasse)
-  const activeStep=TL_STEPS[_curStep>=0?_curStep:0];
+  // Vitesse du step actif — ignorer l'échauffement (t:'warm'), ne prendre que les paliers qual
   let detectedSpeed=null;
-  if(activeStep&&activeStep.s){
+  const activeStep=_curStep>=0?TL_STEPS[_curStep]:null;
+  if(activeStep&&activeStep.t==='qual'&&activeStep.s){
     const m=activeStep.s.match(/([\d.]+)/);
     if(m) detectedSpeed=parseFloat(m[1]);
   }
+  // Si aucun palier atteint (arrêt pendant échauffement ou avant démarrage) → saisie manuelle
   closeTL();
   // Ouvrir la modal résultat avec la vitesse détectée pré-remplie
   document.getElementById('vmaresult-auto-block').style.display=detectedSpeed?'':'none';
@@ -5868,7 +5870,7 @@ function saveAddRun(){
 // Protocole Léger & Boucher : départ 8 km/h, +1 km/h toutes les 2 min
 const VT_START = 8;       // km/h
 const VT_STEP  = 1;       // km/h par palier
-const VT_DUR   = 120;     // secondes par palier
+const VT_DUR   = 180;     // secondes par palier (protocole Machado 2022 : 3 min)
 
 let _vtInterval  = null;
 let _vtPaused    = false;
@@ -6103,6 +6105,10 @@ function calcVmaFromResult(){
   const prev=document.getElementById('vmaresult-preview');
   const btn=document.getElementById('vmaresult-apply-btn');
   if(!v||v<6||v>25){ prev.style.display='none'; btn.style.display='none'; return; }
+  // Alerte si VMA très basse (< 10 km/h) — probablement une erreur de saisie ou arrêt prématuré
+  const warnEl=document.getElementById('vmaresult-err');
+  if(v<10){ if(warnEl){warnEl.textContent='⚠️ VMA inférieure à 10 km/h — es-tu sûr(e) ? Vérifie la vitesse du dernier palier tenu.';warnEl.style.display='block';} }
+  else { if(warnEl) warnEl.style.display='none'; }
   const newVma=Math.round(v*10)/10;
   const oldVma=PROG.vma||0;
   const diff=newVma-oldVma;
