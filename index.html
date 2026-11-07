@@ -1645,7 +1645,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "75";
+const GENERATOR_VERSION = "76";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3724,8 +3724,8 @@ function renderPlan(prog){
   // Warning VMA : vérifier si l'objectif est réaliste
   const vmaWarnEl = document.getElementById('vmaWarn') || (()=>{
     const el=document.createElement('div'); el.id='vmaWarn';
-    el.style.cssText='margin:12px 0;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;text-align:left;width:100%;box-sizing:border-box;';
-    document.getElementById('planMeta').after(el); return el;
+    el.style.cssText='margin:4px 0 12px;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;text-align:left;width:100%;box-sizing:border-box;';
+    document.getElementById('planMeta').parentNode.appendChild(el); return el;
   })();
   if(allureCible && vma){
     // v64: ratio VMA tenable dépend de la distance (5km≈98%, 10km≈94%, semi≈88%, marathon≈82%)
