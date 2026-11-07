@@ -1777,7 +1777,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "84";
+const GENERATOR_VERSION = "85";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5502,9 +5502,12 @@ function openRecalibModal(newVma, reason, actualPaceMin){
     ? `<span style="color:#a00">⚠️ Avec cette VMA, ton objectif actuel sera <strong>difficile à atteindre</strong> dans les délais.</span>`
     : `<span style="color:#1e6b3a">✅ Ton objectif reste <strong>atteignable</strong> avec cette VMA.</span>`;
 
+  const vmaSource = actualPaceMin
+    ? `VMA estimée d'après ta séance`
+    : `VMA estimée (ressenti sans données chiffrées)`;
   document.getElementById('recalib-details').innerHTML =
     `VMA actuelle : <strong>${oldVma} km/h</strong><br>` +
-    `VMA estimée d'après ta séance : <strong>${newVma} km/h</strong> (${sign}${diff} km/h)<br>` +
+    `${vmaSource} : <strong>${newVma} km/h</strong> (${sign}${diff} km/h)<br>` +
     `Zones recalculées : Z1 ${(newVma*0.60).toFixed(1)}–${(newVma*0.72).toFixed(1)} · Z2 ${(newVma*0.72).toFixed(1)}–${(newVma*0.82).toFixed(1)} · Z3 ${(newVma*0.82).toFixed(1)}–${(newVma*0.92).toFixed(1)} · Z4 ${(newVma*0.95).toFixed(1)}–${newVma.toFixed(1)}<br><br>${goalCheck}`;
 
   const overlay = document.getElementById('recalib-overlay');
@@ -5549,30 +5552,43 @@ function applyFeedbackAdjustments(fb, sessId, actualPaceMin){
     return;
   }
 
-  // Séance non terminée (fatigue ou allure) + allure réelle disponible → proposer recalibrage
-  if(fb.done===false && (fb.why==='fatigue'||fb.why==='allure') && actualPaceMin && actualPaceMin>0){
-    const estimatedVma = estimateVmaFromPace(actualPaceMin);
-    // Seulement si la différence est significative (>0.3 km/h)
-    if(Math.abs(estimatedVma - (PROG.vma||0)) >= 0.3){
-      setTimeout(()=>openRecalibModal(estimatedVma, fb.why, actualPaceMin), 500);
+  // Séance non terminée + allure trop rapide → proposer recalibrage
+  // Avec pace réelle : calcul précis depuis la vitesse mesurée
+  // Sans pace (pas de distance saisie) : estimation conservative −5% sur la VMA actuelle
+  if(fb.done===false && fb.why==='allure'){
+    let estimatedVma, usedPace;
+    if(actualPaceMin && actualPaceMin > 0){
+      estimatedVma = estimateVmaFromPace(actualPaceMin);
+      usedPace = actualPaceMin;
+    } else if(PROG.vma && PROG.vma > 0){
+      // Pas de donnée chiffrée : on estime −5% de la VMA actuelle
+      estimatedVma = Math.round((PROG.vma * 0.95) * 10) / 10;
+      usedPace = null;
+    }
+    if(estimatedVma && Math.abs(estimatedVma - (PROG.vma||0)) >= 0.3){
+      setTimeout(()=>openRecalibModal(estimatedVma, fb.why, usedPace), 500);
       return;
     }
-  }
-
-  // Fatigue seule sans allure ou différence trop faible → flag fatigue
-  if(fb.done===false && fb.why==='fatigue'){
-    PROG.fatigueFlag=true;
+    // Différence trop faible → simple banner suspect
+    PROG.vmaSuspect=true;
     saveProg(PROG);
-    setTimeout(()=>toast('⚠️ Fatigue détectée — préserve ta récupération cette semaine.'),400);
+    setTimeout(()=>toast('💡 Allure perçue comme trop rapide — surveille tes prochaines séances.'),400);
     renderPlan(PROG);
     return;
   }
 
-  // Allure trop rapide sans données chiffrées → banner suspect
-  if(fb.why==='allure'){
-    PROG.vmaSuspect=true;
+  // Fatigue seule → flag fatigue
+  if(fb.done===false && fb.why==='fatigue'){
+    if(actualPaceMin && actualPaceMin > 0){
+      const estimatedVma = estimateVmaFromPace(actualPaceMin);
+      if(Math.abs(estimatedVma - (PROG.vma||0)) >= 0.3){
+        setTimeout(()=>openRecalibModal(estimatedVma, fb.why, actualPaceMin), 500);
+        return;
+      }
+    }
+    PROG.fatigueFlag=true;
     saveProg(PROG);
-    setTimeout(()=>toast('💡 Allure perçue comme trop rapide — un test VMA permettrait de recalibrer.'),400);
+    setTimeout(()=>toast('⚠️ Fatigue détectée — préserve ta récupération cette semaine.'),400);
     renderPlan(PROG);
     return;
   }
