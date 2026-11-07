@@ -785,49 +785,159 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 </div>
 
 <!-- ══ MODAL : PLANIFIER UN TEST VMA ══════════════════════════════════════ -->
+<!-- ══ MODAL : TEST VMA GUIDÉ (3 vues) ══════════════════════════════════ -->
 <div id="vmatest-modal" onclick="closeVmaTestModal(event)" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s">
   <div id="vmatest-sheet" onclick="event.stopPropagation()" style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:0 0 env(safe-area-inset-bottom,16px);transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);max-height:92dvh;overflow-y:auto">
     <div style="width:36px;height:4px;border-radius:2px;background:var(--border);margin:12px auto 4px"></div>
-    <div style="padding:12px 20px 4px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:17px;font-weight:800;color:var(--fg)">🧪 Planifier un test VMA</div>
-      <button onclick="closeVmaTestModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg-muted);padding:4px 8px">✕</button>
-    </div>
-    <div style="padding:0 20px 20px">
-      <p style="font-size:12.5px;color:var(--fg-muted);margin-bottom:16px;line-height:1.5">Un test VMA permet de recalibrer ton programme et tes zones d'entraînement en cours de préparation.</p>
 
-      <div class="q-field">
-        <label class="q-label">📅 Date du test</label>
-        <input type="date" id="vmatest-date" class="q-input">
+    <!-- VUE 1 : Planification -->
+    <div id="vmatest-view-plan">
+      <div style="padding:12px 20px 4px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:17px;font-weight:800;color:var(--fg)">🧪 Test VMA</div>
+        <button onclick="closeVmaTestModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg-muted);padding:4px 8px">✕</button>
       </div>
+      <div style="padding:0 20px 20px">
+        <p style="font-size:12.5px;color:var(--fg-muted);margin-bottom:16px;line-height:1.5">Protocole Léger &amp; Boucher — départ 8 km/h, +1 km/h toutes les 2 min, inclinaison 1 %. Durée estimée : 14–22 min.</p>
 
-      <div class="q-field">
-        <label class="q-label">🏃 Protocole</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label style="flex:1;min-width:140px;cursor:pointer">
-            <input type="radio" name="vmatest-proto" value="vameval" checked onchange="updateVmatestProto()">
-            <span style="margin-left:6px;font-weight:600">Vameval (piste)</span>
-          </label>
-          <label style="flex:1;min-width:140px;cursor:pointer">
-            <input type="radio" name="vmatest-proto" value="tapis" onchange="updateVmatestProto()">
-            <span style="margin-left:6px;font-weight:600">Progressif (tapis)</span>
-          </label>
+        <div class="q-field">
+          <label class="q-label">📅 Date du test</label>
+          <input type="date" id="vmatest-date" class="q-input">
+        </div>
+
+        <div class="q-field">
+          <label class="q-label">🏃 Équipement</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label style="flex:1;min-width:140px;cursor:pointer;display:flex;align-items:center;gap:6px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg)" id="vmatest-lbl-tapis">
+              <input type="radio" name="vmatest-proto" value="tapis" checked onchange="updateVmatestProto()">
+              <span style="font-weight:600">🏃 Tapis roulant</span>
+            </label>
+            <label style="flex:1;min-width:140px;cursor:pointer;display:flex;align-items:center;gap:6px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg)" id="vmatest-lbl-vameval">
+              <input type="radio" name="vmatest-proto" value="vameval" onchange="updateVmatestProto()">
+              <span style="font-weight:600">🏟️ Piste (Vameval)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Protocole tapis (affiché par défaut) -->
+        <div id="vmatest-info-tapis" style="background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12.5px;line-height:1.75;color:var(--fg-muted)">
+          <div style="font-weight:700;color:var(--fg);margin-bottom:8px">Protocole Léger &amp; Boucher — tapis</div>
+          <div>⚙️ <strong>Réglage :</strong> inclinaison <strong>1 %</strong>, vitesse de départ <strong>8 km/h</strong></div>
+          <div>⏱️ <strong>Paliers :</strong> <strong>+1 km/h toutes les 2 min</strong>, sans pause</div>
+          <div>🛑 <strong>Arrêt :</strong> dès que tu ne peux plus maintenir la vitesse pendant <strong>15 s</strong></div>
+          <div>🏆 <strong>VMA =</strong> vitesse du palier où tu t'arrêtes</div>
+          <div>🔁 <strong>Retour au calme :</strong> 5 min à 6 km/h, inclinaison 0 %</div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11.5px">ℹ️ Échauffement recommandé : 5–8 min footing léger avant de lancer le test</div>
+        </div>
+        <!-- Protocole vameval (caché par défaut) -->
+        <div id="vmatest-info-vameval" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12.5px;line-height:1.75;color:var(--fg-muted)">
+          <div style="font-weight:700;color:var(--fg);margin-bottom:8px">Protocole Vameval — piste</div>
+          <div>🏟️ <strong>Terrain :</strong> piste 200–400 m avec plots, bande audio Vameval</div>
+          <div>⏱️ <strong>Paliers :</strong> <strong>+0,5 km/h toutes les 60 s</strong>, cadencés par bips</div>
+          <div>🎯 <strong>Objectif :</strong> atteindre le plot suivant à chaque bip</div>
+          <div>🛑 <strong>Arrêt :</strong> 2 bips consécutifs manqués</div>
+          <div>🏆 <strong>VMA =</strong> vitesse du dernier palier complété</div>
+          <div>🔁 <strong>Retour au calme :</strong> 5–10 min footing léger</div>
+        </div>
+
+        <div class="q-field">
+          <label class="q-label">📍 Associer à une semaine</label>
+          <select id="vmatest-week" class="q-input"></select>
+        </div>
+
+        <div id="vmatest-err" style="display:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
+
+        <!-- Boutons selon équipement -->
+        <div id="vmatest-btn-tapis" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <button class="btn-primary" onclick="startVmaTimerNow()" style="background:#1e6b3a">▶ Lancer le test maintenant (avec timer)</button>
+          <button onclick="saveVmaTest()" style="padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg);font-size:14px;cursor:pointer;font-weight:600">📅 Planifier pour plus tard</button>
+        </div>
+        <div id="vmatest-btn-vameval" style="display:none">
+          <button class="btn-primary" onclick="saveVmaTest()" style="margin-top:8px">Planifier ce test</button>
         </div>
       </div>
-
-      <div id="vmatest-proto-info" style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12.5px;line-height:1.6;color:var(--fg-muted)"></div>
-
-      <div class="q-field">
-        <label class="q-label">📍 Associer à une semaine</label>
-        <select id="vmatest-week" class="q-input"></select>
-      </div>
-
-      <div id="vmatest-err" style="display:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
-      <button class="btn-primary" onclick="saveVmaTest()" style="margin-top:8px">Planifier ce test</button>
     </div>
+
+    <!-- VUE 2 : Timer guidé (tapis uniquement) -->
+    <div id="vmatest-view-timer" style="display:none">
+      <div style="padding:14px 20px 4px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:16px;font-weight:800;color:var(--fg)">⏱️ Test VMA en cours</div>
+        <button onclick="stopVmaTimer()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg-muted);padding:4px 8px">✕</button>
+      </div>
+      <div style="padding:0 20px 24px">
+        <!-- Vitesse cible -->
+        <div style="text-align:center;margin:16px 0 10px">
+          <div style="font-size:13px;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Vitesse cible</div>
+          <div id="vt-speed" style="font-size:64px;font-weight:900;color:var(--accent);line-height:1">8.0</div>
+          <div style="font-size:16px;color:var(--fg-muted);margin-top:2px">km/h · inclinaison <strong>1 %</strong></div>
+        </div>
+        <!-- Barre de progression du palier -->
+        <div style="margin:14px 0 6px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--fg-muted);margin-bottom:4px">
+            <span id="vt-step-label">Palier 1 / ~14</span>
+            <span id="vt-countdown">2:00</span>
+          </div>
+          <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div id="vt-bar" style="height:100%;background:var(--accent);border-radius:4px;width:0%;transition:width .5s linear"></div>
+          </div>
+        </div>
+        <!-- Temps total -->
+        <div style="text-align:center;font-size:13px;color:var(--fg-muted);margin-bottom:16px">
+          Temps total : <span id="vt-total">0:00</span>
+        </div>
+        <!-- Prochaine vitesse -->
+        <div id="vt-next-wrap" style="background:var(--bg);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--fg-muted);text-align:center">
+          Prochain palier : <strong id="vt-next-speed">9.0 km/h</strong> dans <span id="vt-next-countdown">2:00</span>
+        </div>
+        <!-- Action principale -->
+        <button onclick="vtCannotHold()" style="width:100%;padding:16px;border-radius:12px;border:none;background:#c0392b;color:#fff;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:10px">
+          🛑 Je n'arrive plus à maintenir
+        </button>
+        <button onclick="vtPause()" id="vt-pause-btn" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">
+          ⏸ Pause
+        </button>
+        <!-- Paliers déjà complétés -->
+        <div id="vt-history" style="margin-top:14px;font-size:12px;color:var(--fg-muted);line-height:2"></div>
+      </div>
+    </div>
+
+    <!-- VUE 3 : Résultat & recalibrage -->
+    <div id="vmatest-view-result" style="display:none">
+      <div style="padding:14px 20px 4px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:17px;font-weight:800;color:var(--fg)">🏆 Résultat du test</div>
+        <button onclick="closeVmaTestModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg-muted);padding:4px 8px">✕</button>
+      </div>
+      <div style="padding:0 20px 24px">
+        <div id="vmaresult-auto-block" style="display:none">
+          <!-- affiché quand le timer a capturé la VMA automatiquement -->
+          <div style="text-align:center;margin:16px 0">
+            <div style="font-size:13px;color:var(--fg-muted);margin-bottom:4px">VMA mesurée</div>
+            <div id="vt-result-vma" style="font-size:56px;font-weight:900;color:#1e6b3a;line-height:1">—</div>
+            <div style="font-size:14px;color:var(--fg-muted)">km/h</div>
+          </div>
+        </div>
+
+        <!-- Saisie manuelle (Vameval ou correction) -->
+        <div id="vmaresult-manual-block">
+          <div class="q-field">
+            <label class="q-label">⚡ VMA mesurée (km/h)</label>
+            <input type="number" id="vmaresult-speed" class="q-input" min="6" max="25" step="0.5" placeholder="ex : 13.0" oninput="calcVmaFromResult()">
+          </div>
+        </div>
+
+        <div id="vmaresult-preview" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin:14px 0;font-size:13px;line-height:1.8"></div>
+        <div id="vmaresult-err" style="display:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
+
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button onclick="closeVmaTestModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--fg);font-size:14px;cursor:pointer">Fermer</button>
+          <button id="vmaresult-apply-btn" onclick="applyVmaResult()" style="flex:2;padding:12px;border-radius:10px;border:none;background:#6b35b0;color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:none">Appliquer la nouvelle VMA</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
-<!-- ══ MODAL : ENTRER RÉSULTAT TEST VMA ══════════════════════════════════ -->
+<!-- Ancienne modal résultat VMA (redirigée vers vmatest-view-result) -->
 <div id="vmaresult-modal" onclick="closeVmaResultModal(event)" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1001;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s">
   <div id="vmaresult-sheet" onclick="event.stopPropagation()" style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:0 0 env(safe-area-inset-bottom,16px);transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);max-height:92dvh;overflow-y:auto">
     <div style="width:36px;height:4px;border-radius:2px;background:var(--border);margin:12px auto 4px"></div>
@@ -837,20 +947,17 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     </div>
     <div style="padding:0 20px 20px">
       <div id="vmaresult-proto-info" style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12.5px;line-height:1.6;color:var(--fg-muted)"></div>
-
       <div id="vmaresult-vameval-fields">
         <div class="q-field">
           <label class="q-label">⚡ Dernière vitesse atteinte (km/h)</label>
-          <input type="number" id="vmaresult-speed" class="q-input" min="6" max="25" step="0.5" placeholder="ex : 14.5" oninput="calcVmaFromResult()">
+          <input type="number" id="vmaresult-speed-old" class="q-input" min="6" max="25" step="0.5" placeholder="ex : 14.5" oninput="calcVmaFromResult()">
         </div>
       </div>
-
-      <div id="vmaresult-preview" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin:14px 0;font-size:13px;line-height:1.8"></div>
-
-      <div id="vmaresult-err" style="display:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
+      <div id="vmaresult-preview2" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin:14px 0;font-size:13px;line-height:1.8"></div>
+      <div id="vmaresult-err2" style="display:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
       <div style="display:flex;gap:10px;margin-top:8px">
         <button onclick="closeVmaResultModal()" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--fg);font-size:14px;cursor:pointer">Ignorer</button>
-        <button id="vmaresult-apply-btn" onclick="applyVmaResult()" style="flex:2;padding:12px;border-radius:10px;border:none;background:#6b35b0;color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:none">Appliquer la nouvelle VMA</button>
+        <button id="vmaresult-apply-btn2" onclick="applyVmaResult()" style="flex:2;padding:12px;border-radius:10px;border:none;background:#6b35b0;color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:none">Appliquer la nouvelle VMA</button>
       </div>
     </div>
   </div>
@@ -1777,7 +1884,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "85";
+const GENERATOR_VERSION = "87";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5653,17 +5760,26 @@ function saveAddRun(){
   toast('Course ajoutée ✓');
 }
 
-// ── Test VMA ────────────────────────────────────────────────────────────
+// ── Test VMA guidé ──────────────────────────────────────────────────────
 
-const VMATEST_PROTO_INFO = {
-  vameval: '📍 <strong>Vameval (piste)</strong><br>Piste de 200 à 400 m · Paliers de +0,5 km/h toutes les minutes, cadencés par bips · Court en suivant les plots marqués · S\'arrêter quand tu ne peux plus tenir la vitesse · <strong>VMA = vitesse du dernier palier complété</strong>',
-  tapis: '📍 <strong>Progressif tapis roulant</strong><br>Inclinaison fixe à 1 % · Départ à une vitesse confortable (ex. 8–9 km/h) · Augmenter de 0,5 ou 1 km/h toutes les minutes · Arrêter à épuisement ou impossibilité de maintenir · <strong>VMA = dernière vitesse maintenue</strong>'
-};
+// Protocole Léger & Boucher : départ 8 km/h, +1 km/h toutes les 2 min
+const VT_START = 8;       // km/h
+const VT_STEP  = 1;       // km/h par palier
+const VT_DUR   = 120;     // secondes par palier
+
+let _vtInterval  = null;
+let _vtPaused    = false;
+let _vtSecsLeft  = VT_DUR;
+let _vtTotalSecs = 0;
+let _vtPalier    = 1;      // palier actuel (1 = 8 km/h)
+let _vtCurrentSpeed = VT_START;
+let _vtSessId    = null;
+
+function vtSpeed(palier){ return VT_START + (palier - 1) * VT_STEP; }
 
 function openAddVmaTest(){
   if(!PROG) return;
   document.getElementById('vmatest-date').value=new Date().toISOString().slice(0,10);
-  // Remplir les semaines
   const sel=document.getElementById('vmatest-week');
   sel.innerHTML='';
   PROG.weeks.forEach(wk=>{
@@ -5674,6 +5790,7 @@ function openAddVmaTest(){
   });
   updateVmatestProto();
   document.getElementById('vmatest-err').style.display='none';
+  _showVmatestView('plan');
   const modal=document.getElementById('vmatest-modal');
   const sheet=document.getElementById('vmatest-sheet');
   modal.style.opacity='1'; modal.style.pointerEvents='all';
@@ -5681,8 +5798,15 @@ function openAddVmaTest(){
   document.body.style.overflow='hidden';
 }
 
+function _showVmatestView(v){
+  ['plan','timer','result'].forEach(n=>{
+    document.getElementById('vmatest-view-'+n).style.display = n===v ? '' : 'none';
+  });
+}
+
 function closeVmaTestModal(e){
   if(e&&e.target!==document.getElementById('vmatest-modal'))return;
+  stopVmaTimer();
   const modal=document.getElementById('vmatest-modal');
   const sheet=document.getElementById('vmatest-sheet');
   modal.style.opacity='0'; modal.style.pointerEvents='none';
@@ -5691,8 +5815,124 @@ function closeVmaTestModal(e){
 }
 
 function updateVmatestProto(){
-  const proto=document.querySelector('input[name="vmatest-proto"]:checked')?.value||'vameval';
-  document.getElementById('vmatest-proto-info').innerHTML=VMATEST_PROTO_INFO[proto]||'';
+  const proto=document.querySelector('input[name="vmatest-proto"]:checked')?.value||'tapis';
+  document.getElementById('vmatest-info-tapis').style.display  = proto==='tapis'   ? '' : 'none';
+  document.getElementById('vmatest-info-vameval').style.display= proto==='vameval' ? '' : 'none';
+  document.getElementById('vmatest-btn-tapis').style.display   = proto==='tapis'   ? '' : 'none';
+  document.getElementById('vmatest-btn-vameval').style.display = proto==='vameval' ? '' : 'none';
+  // Style des labels radio
+  ['tapis','vameval'].forEach(p=>{
+    const lbl=document.getElementById('vmatest-lbl-'+p);
+    if(lbl) lbl.style.borderColor = proto===p ? 'var(--accent)' : 'var(--border)';
+  });
+}
+
+// ── Timer tapis ────────────────────────────────────────────────────────
+
+function startVmaTimerNow(){
+  const date=document.getElementById('vmatest-date').value;
+  const wkNum=parseInt(document.getElementById('vmatest-week').value);
+  const errEl=document.getElementById('vmatest-err');
+  if(!date){errEl.textContent='Veuillez choisir une date.';errEl.style.display='block';return;}
+  if(!wkNum){errEl.textContent='Veuillez choisir une semaine.';errEl.style.display='block';return;}
+  errEl.style.display='none';
+
+  // Créer et sauvegarder la séance
+  const testId='vmatest_'+Date.now();
+  _vtSessId=testId;
+  const testSess={id:testId,type:'vma_test',proto:'tapis',date,title:'Test VMA'};
+  const wk=PROG.weeks.find(w=>w.num===wkNum);
+  if(!wk){errEl.textContent='Semaine introuvable.';errEl.style.display='block';return;}
+  wk.sessions.unshift(testSess);
+  PROG.vmaTests=PROG.vmaTests||[];
+  PROG.vmaTests.push({id:testId,date,proto:'tapis',weekNum:wkNum});
+  saveProg(PROG);
+
+  // Init timer
+  _vtPalier=1; _vtSecsLeft=VT_DUR; _vtTotalSecs=0; _vtPaused=false;
+  _vtCurrentSpeed=vtSpeed(1);
+  vtUpdateUI();
+  _showVmatestView('timer');
+  _vtInterval=setInterval(vtTick,1000);
+}
+
+function vtTick(){
+  if(_vtPaused) return;
+  _vtSecsLeft--;
+  _vtTotalSecs++;
+  if(_vtSecsLeft<=0){
+    // Palier suivant
+    _vtPalier++;
+    _vtCurrentSpeed=vtSpeed(_vtPalier);
+    _vtSecsLeft=VT_DUR;
+    // Flash court pour signaler le changement
+    const sp=document.getElementById('vt-speed');
+    if(sp){ sp.style.color='#fff'; setTimeout(()=>{ sp.style.color='var(--accent)'; },300); }
+  }
+  vtUpdateUI();
+}
+
+function vtUpdateUI(){
+  const sp=document.getElementById('vt-speed');
+  if(sp) sp.textContent=_vtCurrentSpeed.toFixed(1);
+
+  const pct=Math.round(((VT_DUR-_vtSecsLeft)/VT_DUR)*100);
+  const bar=document.getElementById('vt-bar');
+  if(bar) bar.style.width=pct+'%';
+
+  const mins=Math.floor(_vtSecsLeft/60), secs=_vtSecsLeft%60;
+  const cd=document.getElementById('vt-countdown');
+  if(cd) cd.textContent=mins+':'+(secs<10?'0':'')+secs;
+
+  const tm=Math.floor(_vtTotalSecs/60), ts=_vtTotalSecs%60;
+  const tot=document.getElementById('vt-total');
+  if(tot) tot.textContent=tm+':'+(ts<10?'0':'')+ts;
+
+  // Palier estimé total (~14 paliers pour VMA 22 km/h)
+  const estTotal=Math.max(14,_vtPalier+2);
+  const sl=document.getElementById('vt-step-label');
+  if(sl) sl.textContent=`Palier ${_vtPalier} — ${_vtCurrentSpeed.toFixed(1)} km/h`;
+
+  // Prochain
+  const nextSpeed=(vtSpeed(_vtPalier+1)).toFixed(1);
+  const nsp=document.getElementById('vt-next-speed');
+  if(nsp) nsp.textContent=nextSpeed+' km/h';
+  const ncd=document.getElementById('vt-next-countdown');
+  const totalSecsToNext=_vtSecsLeft;
+  const nm=Math.floor(totalSecsToNext/60), ns=totalSecsToNext%60;
+  if(ncd) ncd.textContent=nm+':'+(ns<10?'0':'')+ns;
+
+  // Historique paliers
+  const hist=document.getElementById('vt-history');
+  if(hist&&_vtPalier>1){
+    let h='Paliers complétés : ';
+    for(let i=1;i<_vtPalier;i++) h+=`<span style="display:inline-block;padding:2px 7px;border-radius:12px;background:var(--accent-soft);color:var(--accent);margin:2px;font-size:11px">${vtSpeed(i).toFixed(1)}</span>`;
+    hist.innerHTML=h;
+  }
+}
+
+function vtCannotHold(){
+  // L'utilisateur s'arrête : VMA = vitesse du palier en cours
+  stopVmaTimer();
+  const vma=_vtCurrentSpeed;
+  document.getElementById('vt-result-vma').textContent=vma.toFixed(1);
+  document.getElementById('vmaresult-auto-block').style.display='';
+  document.getElementById('vmaresult-manual-block').style.display='none';
+  document.getElementById('vmaresult-speed').value=vma.toFixed(1);
+  document.getElementById('vmaresult-err').style.display='none';
+  _showVmatestView('result');
+  calcVmaFromResult();
+}
+
+function vtPause(){
+  _vtPaused=!_vtPaused;
+  const btn=document.getElementById('vt-pause-btn');
+  if(btn) btn.textContent=_vtPaused ? '▶ Reprendre' : '⏸ Pause';
+}
+
+function stopVmaTimer(){
+  if(_vtInterval){ clearInterval(_vtInterval); _vtInterval=null; }
+  _vtPaused=false;
 }
 
 function saveVmaTest(){
@@ -5733,31 +5973,25 @@ function deleteVmaTest(sessId){
 let _currentVmaTestId=null;
 
 function openVmaResultModal(sessId){
+  // Redirigé vers la modal unifiée (vue résultat)
   _currentVmaTestId=sessId;
-  // Trouver la séance
-  let sess=null;
-  for(const wk of PROG.weeks){ sess=wk.sessions.find(s=>s.id===sessId); if(sess) break; }
-  if(!sess) return;
-  const proto=sess.proto||'vameval';
-  document.getElementById('vmaresult-proto-info').innerHTML=VMATEST_PROTO_INFO[proto]||'';
+  document.getElementById('vmaresult-auto-block').style.display='none';
+  document.getElementById('vmaresult-manual-block').style.display='';
   document.getElementById('vmaresult-speed').value='';
   document.getElementById('vmaresult-preview').style.display='none';
   document.getElementById('vmaresult-apply-btn').style.display='none';
   document.getElementById('vmaresult-err').style.display='none';
-  const modal=document.getElementById('vmaresult-modal');
-  const sheet=document.getElementById('vmaresult-sheet');
+  _showVmatestView('result');
+  const modal=document.getElementById('vmatest-modal');
+  const sheet=document.getElementById('vmatest-sheet');
   modal.style.opacity='1'; modal.style.pointerEvents='all';
   sheet.style.transform='translateY(0)';
   document.body.style.overflow='hidden';
 }
 
 function closeVmaResultModal(e){
-  if(e&&e.target!==document.getElementById('vmaresult-modal'))return;
-  const modal=document.getElementById('vmaresult-modal');
-  const sheet=document.getElementById('vmaresult-sheet');
-  modal.style.opacity='0'; modal.style.pointerEvents='none';
-  sheet.style.transform='translateY(100%)';
-  document.body.style.overflow='';
+  // Alias pour compatibilité
+  closeVmaTestModal(e);
 }
 
 function calcVmaFromResult(){
