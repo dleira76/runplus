@@ -1645,7 +1645,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "74";
+const GENERATOR_VERSION = "75";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3718,14 +3718,8 @@ function renderPlan(prog){
   document.getElementById('planTitle').textContent=raceName||distName(dist);
   const gb=document.getElementById('planGoalBadge');
   gb.textContent='Objectif '+goalTime; gb.style.display='inline-block';
-  // debug v72 — afficher VMA réelle et source pour diagnostic
-  const _gs = prog.goalSec||0;
-  const _rVMA = prog.raceEvents&&prog.raceEvents.length>0 ? bestRaceVMA(prog.raceEvents) : null;
-  const _gVMA = !_rVMA && _gs>0 && dist ? estimateVMAFromGoal(dist, _gs) : null;
-  const _vmaCalc = _rVMA || _gVMA || estimateVMA(speed);
-  const _src = _rVMA ? 'courses' : _gVMA ? 'objectif' : 'footing';
   document.getElementById('planMeta').textContent=
-    `Programme sur mesure . ${days} séances / semaine . ${weeks.length} semaines . ${raceName||distName(dist)}, ${humanDate(raceDate)} · 🔍 VMA: ${vma}→${_vmaCalc} (${_src}, gs=${_gs})`;
+    `Programme sur mesure . ${days} séances / semaine . ${weeks.length} semaines . ${raceName||distName(dist)}, ${humanDate(raceDate)}`;
 
   // Warning VMA : vérifier si l'objectif est réaliste
   const vmaWarnEl = document.getElementById('vmaWarn') || (()=>{
@@ -3775,7 +3769,12 @@ function renderPlan(prog){
       vmaWarnEl.style.color='#0c5460';
       vmaWarnEl.innerHTML=`ℹ️ <strong>Objectif atteignable avec la progression</strong> — VMA actuelle : ${vma.toFixed(1)} km/h (${ratioVMAactuel}% de ta VMA), mais en progressant de +${vmaGainEstime.toFixed(1)} km/h sur ${nbSemaines} semaines, ta VMA projetée de <strong>${vmaProjetee.toFixed(1)} km/h</strong> met l'objectif à portée (${ratioVMAprojetee}% · VMA requise : ${vmaRequise.toFixed(1)} km/h). Reste cohérent avec les allures d'entraînement.`;
     } else {
-      vmaWarnEl.style.display='none';
+      // VMA actuelle couvre déjà l'objectif — message de confirmation
+      vmaWarnEl.style.display='block';
+      vmaWarnEl.style.background='#d4edda';
+      vmaWarnEl.style.border='1px solid #c3e6cb';
+      vmaWarnEl.style.color='#155724';
+      vmaWarnEl.innerHTML=`✅ <strong>Objectif cohérent avec ton niveau</strong> — VMA actuelle : ${vma.toFixed(1)} km/h (${ratioVMAactuel}% de ta VMA). Le ${distLabel} se court généralement à ${tenableRange}% de la VMA. Tu es dans la bonne fourchette.`;
     }
   }
 
