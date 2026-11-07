@@ -1884,7 +1884,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "88";
+const GENERATOR_VERSION = "89";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4191,6 +4191,7 @@ function buildSessHTML(sess,wn,si){
     const today=new Date().toISOString().slice(0,10);
     const canEnterResult=sess.date&&sess.date<=today;
     const btnResult=canEnterResult&&!hasResult?`<button onclick="openVmaResultModal('${sess.id}')" style="margin-top:10px;padding:8px 16px;border-radius:8px;border:none;background:#6b35b0;color:#fff;font-size:13px;font-weight:700;cursor:pointer">📊 Entrer mon résultat</button>`:'';
+    const btnTimeline=proto==='tapis'&&!hasResult?`<button onclick="openVmaTimerDirect('${sess.id}')" class="tl-btn" style="margin-top:10px;margin-left:8px">⏱ Timeline</button>`:'';
     const btnDelete=`<button onclick="deleteVmaTest('${sess.id}')" style="margin-top:10px;margin-left:8px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--fg-muted);font-size:12px;cursor:pointer">Supprimer</button>`;
     return `<div class="sess-row" id="sess-${sess.id}" style="border-left:3px solid #6b35b0;background:linear-gradient(to right,#f8f4ff,var(--surface))">
       <div style="padding:12px 14px">
@@ -4202,7 +4203,7 @@ function buildSessHTML(sess,wn,si){
         <div style="font-size:12.5px;color:var(--fg-muted);margin-bottom:4px">Protocole : <strong>${protoLabel}</strong></div>
         <div style="font-size:12px;color:var(--fg-muted);line-height:1.5">${proto==='vameval'?'Piste 200–400 m · Paliers +0,5 km/h / minute · S\'arrêter à épuisement · VMA = dernière vitesse tenue':'Tapis à 1 % · Départ confortable · +0,5 ou 1 km/h / minute · Arrêt à épuisement · VMA = dernière vitesse maintenue'}</div>
         ${resultBadge}
-        <div>${btnResult}${btnDelete}</div>
+        <div>${btnResult}${btnTimeline}${btnDelete}</div>
       </div>
     </div>`;
   }
@@ -5881,6 +5882,7 @@ function startVmaTimerNow(){
   // Créer et sauvegarder la séance
   const testId='vmatest_'+Date.now();
   _vtSessId=testId;
+  _currentVmaTestId=testId;
   const testSess={id:testId,type:'vma_test',proto:'tapis',date,title:'Test VMA'};
   const wk=PROG.weeks.find(w=>w.num===wkNum);
   if(!wk){errEl.textContent='Semaine introuvable.';errEl.style.display='block';return;}
@@ -5890,6 +5892,27 @@ function startVmaTimerNow(){
   saveProg(PROG);
 
   // Init timer
+  _vtPalier=1; _vtSecsLeft=VT_DUR; _vtTotalSecs=0; _vtPaused=false;
+  _vtCurrentSpeed=vtSpeed(1);
+  vtUpdateUI();
+  _showVmatestView('timer');
+  _vtInterval=setInterval(vtTick,1000);
+}
+
+// Lancer le timer tapis depuis une séance VMA déjà planifiée (carte semaine)
+function openVmaTimerDirect(sessId){
+  const sess=findSess(sessId);
+  if(!sess||sess.proto!=='tapis') return;
+  // Enregistrer l'ID pour applyVmaResult
+  _vtSessId=sessId;
+  _currentVmaTestId=sessId;
+  // Ouvrir le modal VMA
+  const modal=document.getElementById('vmatest-modal');
+  const sheet=document.getElementById('vmatest-sheet');
+  modal.style.opacity='1'; modal.style.pointerEvents='all';
+  sheet.style.transform='translateY(0)';
+  document.body.style.overflow='hidden';
+  // Init timer et passer directement en vue timer
   _vtPalier=1; _vtSecsLeft=VT_DUR; _vtTotalSecs=0; _vtPaused=false;
   _vtCurrentSpeed=vtSpeed(1);
   vtUpdateUI();
