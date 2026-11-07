@@ -1131,6 +1131,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     </div>
     <div class="tl-stats" id="tlStats" style="display:none"></div>
     <div class="tl-bar" id="tlBar"></div>
+    <!-- Bouton stop VMA — visible uniquement pendant un test VMA (v89) -->
+    <button id="tlVmaStopBtn" onclick="vmaStopFromTL()" style="display:none;width:calc(100% - 32px);margin:10px 16px 0;padding:16px;border-radius:14px;border:none;background:#c0392b;color:#fff;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:.01em">🛑 Je n'arrive plus à maintenir — noter ma VMA</button>
     <div class="tl-list" id="tlList"></div>
   </div>
 </div>
@@ -1884,7 +1886,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "89";
+const GENERATOR_VERSION = "90";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4191,7 +4193,7 @@ function buildSessHTML(sess,wn,si){
     const today=new Date().toISOString().slice(0,10);
     const canEnterResult=sess.date&&sess.date<=today;
     const btnResult=canEnterResult&&!hasResult?`<button onclick="openVmaResultModal('${sess.id}')" style="margin-top:10px;padding:8px 16px;border-radius:8px;border:none;background:#6b35b0;color:#fff;font-size:13px;font-weight:700;cursor:pointer">📊 Entrer mon résultat</button>`:'';
-    const btnTimeline=proto==='tapis'&&!hasResult?`<button onclick="openVmaTimerDirect('${sess.id}')" class="tl-btn" style="margin-top:10px;margin-left:8px">⏱ Timeline</button>`:'';
+    const btnTimeline=!hasResult?`<button onclick="openTL('${sess.id}')" class="tl-btn" style="margin-top:10px;margin-left:8px">⏱ Timeline</button>`:'';
     const btnDelete=`<button onclick="deleteVmaTest('${sess.id}')" style="margin-top:10px;margin-left:8px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--fg-muted);font-size:12px;cursor:pointer">Supprimer</button>`;
     return `<div class="sess-row" id="sess-${sess.id}" style="border-left:3px solid #6b35b0;background:linear-gradient(to right,#f8f4ff,var(--surface))">
       <div style="padding:12px 14px">
@@ -5078,6 +5080,19 @@ const ANNOUNCE_AHEAD=10, BEEP_AHEAD=5;
 
 function findSess(id){for(const w of PROG.weeks){const s=w.sessions.find(s=>s.id===id);if(s)return s;}return null;}
 
+// Génère les steps standard pour le test VMA tapis (Léger & Boucher)
+// paliers 8–22 km/h, 2 min chacun — durée variable selon quand l'user arrête
+function buildVmaTestSteps(){
+  const steps=[];
+  // Échauffement marche 3 min avant de commencer
+  steps.push({t:'warm',d:3,txt:'Échauffement — marche active 3 min · tapis à 1 % · prépare-toi',s:'< 6 km/h'});
+  for(let p=1;p<=15;p++){
+    const spd=(VT_START+(p-1)*VT_STEP).toFixed(1);
+    steps.push({t:'qual',d:2,txt:`Palier ${p} — ${spd} km/h · tapis à 1 %`,s:`${spd} km/h`});
+  }
+  return steps;
+}
+
 function openTL(id){
   TL_SESS=findSess(id); if(!TL_SESS)return;
   // v70b — séance renfo : Timeline lance directement le 1er exercice
@@ -5094,15 +5109,23 @@ function openTL(id){
     }
     return;
   }
+  // v89 — Test VMA tapis : générer les steps et ajouter bouton stop rouge
+  if(TL_SESS.type==='vma_test'){
+    _currentVmaTestId=id;
+    TL_SESS.steps=buildVmaTestSteps();
+  }
   let cum=0;
   TL_STEPS=TL_SESS.steps.map(s=>{const st=cum;cum+=(s.d||0)*60;return{...s,startSec:st,endSec:cum};});
   TL_TOTAL=cum;
-  document.getElementById('tlTitle').textContent=TL_SESS.title;
-  document.getElementById('tlTotal').textContent='Durée : '+Math.round(TL_TOTAL/60)+' min';
+  document.getElementById('tlTitle').textContent=TL_SESS.title||'Test VMA';
+  document.getElementById('tlTotal').textContent=TL_SESS.type==='vma_test'?'Durée variable · arrête quand tu n\'arrives plus':'Durée : '+Math.round(TL_TOTAL/60)+' min';
   updateDoneUI(!!DONE[TL_SESS.id]);
   updateTrainBadge();
   renderBar(); renderTLList(-1); updateTLStats();
   chronoReset();
+  // Bouton stop VMA : visible uniquement pour vma_test
+  const stopBtn=document.getElementById('tlVmaStopBtn');
+  if(stopBtn) stopBtn.style.display=TL_SESS.type==='vma_test'?'':'none';
   document.getElementById('tlOverlay').classList.add('open');
   wakelock();
   if(_voiceEnabled) preloadVoice(TL_STEPS);
@@ -5247,7 +5270,45 @@ function announce(text){
   clearTimeout(_annTO);_annTO=setTimeout(()=>el.classList.remove('show'),3000);
 }
 
-function closeTL(){document.getElementById('tlOverlay').classList.remove('open');if(_running)chronoToggle();stopSilent();relWakelock();}
+// v89 — arrêter le test VMA depuis la Timeline et ouvrir la saisie résultat
+function vmaStopFromTL(){
+  if(_running) chronoToggle(); // pause le chrono
+  // Vitesse du step actif (ou dernier step si chrono dépasse)
+  const activeStep=TL_STEPS[_curStep>=0?_curStep:0];
+  let detectedSpeed=null;
+  if(activeStep&&activeStep.s){
+    const m=activeStep.s.match(/([\d.]+)/);
+    if(m) detectedSpeed=parseFloat(m[1]);
+  }
+  closeTL();
+  // Ouvrir la modal résultat avec la vitesse détectée pré-remplie
+  document.getElementById('vmaresult-auto-block').style.display=detectedSpeed?'':'none';
+  document.getElementById('vmaresult-manual-block').style.display='';
+  if(detectedSpeed){
+    document.getElementById('vt-result-vma').textContent=detectedSpeed.toFixed(1);
+    document.getElementById('vmaresult-speed').value=detectedSpeed.toFixed(1);
+    calcVmaFromResult();
+  } else {
+    document.getElementById('vmaresult-speed').value='';
+    document.getElementById('vmaresult-preview').style.display='none';
+    document.getElementById('vmaresult-apply-btn').style.display='none';
+  }
+  document.getElementById('vmaresult-err').style.display='none';
+  _showVmatestView('result');
+  const modal=document.getElementById('vmatest-modal');
+  const sheet=document.getElementById('vmatest-sheet');
+  modal.style.opacity='1'; modal.style.pointerEvents='all';
+  sheet.style.transform='translateY(0)';
+  document.body.style.overflow='hidden';
+}
+
+function closeTL(){
+  document.getElementById('tlOverlay').classList.remove('open');
+  const stopBtn=document.getElementById('tlVmaStopBtn');
+  if(stopBtn) stopBtn.style.display='none';
+  if(_running)chronoToggle();
+  stopSilent();relWakelock();
+}
 function closeTLOut(e){if(e.target===document.getElementById('tlOverlay'))closeTL();}
 
 function updateDoneUI(d){
@@ -5892,27 +5953,6 @@ function startVmaTimerNow(){
   saveProg(PROG);
 
   // Init timer
-  _vtPalier=1; _vtSecsLeft=VT_DUR; _vtTotalSecs=0; _vtPaused=false;
-  _vtCurrentSpeed=vtSpeed(1);
-  vtUpdateUI();
-  _showVmatestView('timer');
-  _vtInterval=setInterval(vtTick,1000);
-}
-
-// Lancer le timer tapis depuis une séance VMA déjà planifiée (carte semaine)
-function openVmaTimerDirect(sessId){
-  const sess=findSess(sessId);
-  if(!sess||sess.proto!=='tapis') return;
-  // Enregistrer l'ID pour applyVmaResult
-  _vtSessId=sessId;
-  _currentVmaTestId=sessId;
-  // Ouvrir le modal VMA
-  const modal=document.getElementById('vmatest-modal');
-  const sheet=document.getElementById('vmatest-sheet');
-  modal.style.opacity='1'; modal.style.pointerEvents='all';
-  sheet.style.transform='translateY(0)';
-  document.body.style.overflow='hidden';
-  // Init timer et passer directement en vue timer
   _vtPalier=1; _vtSecsLeft=VT_DUR; _vtTotalSecs=0; _vtPaused=false;
   _vtCurrentSpeed=vtSpeed(1);
   vtUpdateUI();
