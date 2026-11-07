@@ -1127,6 +1127,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   </div>
 </div>
 
+<!-- ══ MODAL RECALIBRAGE VMA ══════════════════════════════════════════════ -->
+<div id="recalib-overlay" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center">
+  <div id="recalib-sheet" style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px 20px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 32px rgba(0,0,0,.2)">
+    <div style="width:36px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 16px"></div>
+    <div style="font-size:17px;font-weight:800;color:var(--fg);margin-bottom:6px" id="recalib-title">⚠️ Programme à recalibrer ?</div>
+    <div style="font-size:13.5px;color:var(--fg-muted);line-height:1.6;margin-bottom:16px" id="recalib-body"></div>
+    <div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.7" id="recalib-details"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeRecalibModal()" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg-muted);font-size:14px;font-weight:600;cursor:pointer">Garder tel quel</button>
+      <button id="recalib-apply-btn" onclick="applyRecalib()" style="flex:2;padding:12px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer">Recalibrer le programme</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ ICS MODAL ══════════════════════════════════════════════════════════ -->
 <div class="ics-overlay" id="icsOverlay">
   <div class="ics-modal">
@@ -1763,7 +1777,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "82";
+const GENERATOR_VERSION = "84";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5455,36 +5469,120 @@ function getFbState(){
   return {done, why, rpe};
 }
 
-// Logique moteur : ajustements après feedback
-function applyFeedbackAdjustments(fb, sessId){
+// ── Recalibrage VMA depuis échec de séance ───────────────────────────────
+let _recalibNewVma = null;
+
+function estimateVmaFromPace(actualPaceMin){
+  // L'allure réelle au moment de l'arrêt correspond à ~85% de VMA (zone seuil/tempo)
+  // On reconstitue la VMA : vma = (60 / actualPaceMin) / 0.85
+  const actualKmh = 60 / actualPaceMin;
+  return Math.round((actualKmh / 0.85) * 10) / 10;
+}
+
+function openRecalibModal(newVma, reason, actualPaceMin){
   if(!PROG) return;
-  const alerts=[];
-  // 1. Fatigue + RPE ≥ 4 → réduire charge semaine suivante
-  if(fb.done===false && fb.why==='fatigue' && fb.rpe>=4){
-    PROG.fatigueFlag=true;
-    alerts.push('⚠️ Fatigue détectée — la charge de la prochaine semaine sera légèrement réduite.');
-  }
-  // 2. Allure trop rapide → suspecter VMA sous-estimée
-  if(fb.why==='allure'){
-    PROG.vmaSuspect=true;
-    alerts.push('💡 Allure perçue comme trop rapide — pense à planifier un test VMA pour recalibrer ton programme.');
-  }
-  // 3. Douleur → semaine de récupération conseillée
+  _recalibNewVma = newVma;
+  const oldVma = PROG.vma || 0;
+  const diff = (newVma - oldVma).toFixed(1);
+  const sign = diff >= 0 ? '+' : '';
+
+  const reasonText = {
+    fatigue: 'tu n\'as pas pu terminer la séance par fatigue',
+    allure: 'l\'allure prévue était trop rapide',
+    douleur: 'tu as ressenti une douleur',
+  }[reason] || 'la séance n\'a pas pu être terminée';
+
+  document.getElementById('recalib-title').textContent =
+    newVma < oldVma ? '⚠️ Objectif à reconsidérer ?' : '💡 Programme à recalibrer ?';
+
+  document.getElementById('recalib-body').innerHTML =
+    `Comme ${reasonText}, les données suggèrent que ta <strong>VMA réelle est différente</strong> de celle utilisée pour calculer ton programme.`;
+
+  const goalCheck = newVma < oldVma
+    ? `<span style="color:#a00">⚠️ Avec cette VMA, ton objectif actuel sera <strong>difficile à atteindre</strong> dans les délais.</span>`
+    : `<span style="color:#1e6b3a">✅ Ton objectif reste <strong>atteignable</strong> avec cette VMA.</span>`;
+
+  document.getElementById('recalib-details').innerHTML =
+    `VMA actuelle : <strong>${oldVma} km/h</strong><br>` +
+    `VMA estimée d'après ta séance : <strong>${newVma} km/h</strong> (${sign}${diff} km/h)<br>` +
+    `Zones recalculées : Z1 ${(newVma*0.60).toFixed(1)}–${(newVma*0.72).toFixed(1)} · Z2 ${(newVma*0.72).toFixed(1)}–${(newVma*0.82).toFixed(1)} · Z3 ${(newVma*0.82).toFixed(1)}–${(newVma*0.92).toFixed(1)} · Z4 ${(newVma*0.95).toFixed(1)}–${newVma.toFixed(1)}<br><br>${goalCheck}`;
+
+  const overlay = document.getElementById('recalib-overlay');
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeRecalibModal(){
+  document.getElementById('recalib-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+  _recalibNewVma = null;
+}
+
+function applyRecalib(){
+  if(!PROG || !_recalibNewVma) return;
+  const oldVma = PROG.vma;
+  const newVma = _recalibNewVma;
+  PROG.vma = newVma;
+  PROG.Z = {
+    z1:{min:+(newVma*0.60).toFixed(1),max:+(newVma*0.72).toFixed(1),label:'Z1 - Endurance fondamentale'},
+    z2:{min:+(newVma*0.72).toFixed(1),max:+(newVma*0.82).toFixed(1),label:'Z2 - Endurance longue'},
+    z3:{min:+(newVma*0.82).toFixed(1),max:+(newVma*0.92).toFixed(1),label:'Z3 - Seuil / Tempo'},
+    z4:{min:+(newVma*0.95).toFixed(1),max:+(newVma*1.00).toFixed(1),label:'Z4 - VMA (intervalles)'},
+  };
+  delete PROG.vmaSuspect;
+  saveProg(PROG);
+  closeRecalibModal();
+  renderPlan(PROG);
+  toast(`Programme recalibré : VMA ${oldVma} → ${newVma} km/h · Zones mises à jour ✓`);
+}
+
+// Logique moteur : ajustements après feedback
+function applyFeedbackAdjustments(fb, sessId, actualPaceMin){
+  if(!PROG) return;
+
+  // Douleur → banner récupération (priorité maximale, pas de recalibrage)
   if(fb.why==='douleur'){
     PROG.recoveryNeeded=true;
-    alerts.push('🩹 Douleur signalée — une semaine de récupération est recommandée. Consulte un médecin si la douleur persiste.');
+    saveProg(PROG);
+    setTimeout(()=>toast('🩹 Douleur signalée — une semaine de récupération est recommandée.'),400);
+    renderPlan(PROG);
+    return;
   }
-  // 4. RPE ≥ 5 seul (séance terminée mais épuisante)
+
+  // Séance non terminée (fatigue ou allure) + allure réelle disponible → proposer recalibrage
+  if(fb.done===false && (fb.why==='fatigue'||fb.why==='allure') && actualPaceMin && actualPaceMin>0){
+    const estimatedVma = estimateVmaFromPace(actualPaceMin);
+    // Seulement si la différence est significative (>0.3 km/h)
+    if(Math.abs(estimatedVma - (PROG.vma||0)) >= 0.3){
+      setTimeout(()=>openRecalibModal(estimatedVma, fb.why, actualPaceMin), 500);
+      return;
+    }
+  }
+
+  // Fatigue seule sans allure ou différence trop faible → flag fatigue
+  if(fb.done===false && fb.why==='fatigue'){
+    PROG.fatigueFlag=true;
+    saveProg(PROG);
+    setTimeout(()=>toast('⚠️ Fatigue détectée — préserve ta récupération cette semaine.'),400);
+    renderPlan(PROG);
+    return;
+  }
+
+  // Allure trop rapide sans données chiffrées → banner suspect
+  if(fb.why==='allure'){
+    PROG.vmaSuspect=true;
+    saveProg(PROG);
+    setTimeout(()=>toast('💡 Allure perçue comme trop rapide — un test VMA permettrait de recalibrer.'),400);
+    renderPlan(PROG);
+    return;
+  }
+
+  // RPE 5 séance terminée → fatigue légère
   if(fb.done===true && fb.rpe===5){
     PROG.fatigueFlag=true;
-    alerts.push('⚠️ Séance très difficile (RPE 5) — la charge de la prochaine semaine sera légèrement réduite.');
-  }
-  if(alerts.length>0){
-    saveProg();
-    // Afficher les alertes dans un toast étendu
-    setTimeout(()=>{
-      alerts.forEach((msg,i)=>setTimeout(()=>toast(msg),i*2200));
-    },400);
+    saveProg(PROG);
+    setTimeout(()=>toast('⚠️ Séance très difficile — préserve ta récupération.'),400);
+    renderPlan(PROG);
   }
 }
 
@@ -5939,8 +6037,31 @@ function saveDoneModal(){
   }
   DONE[TL_SESS.id]=Date.now();
   saveDone();saveTrain();
-  // Logique moteur
-  if(fb.done!==null||fb.why||fb.rpe) applyFeedbackAdjustments(fb, TL_SESS.id);
+  // Détecter allure réelle plus rapide que prévue → vmaSuspect automatique
+  if(paceMin && paceMin > 0 && km > 0.5){
+    // Calculer allure cible moyenne de la séance depuis les steps (exclure échauffement/récup)
+    let totalDistTarget=0, totalTimeTarget=0;
+    TL_STEPS.forEach(s=>{
+      if(s.d && s.s && s.type!=='warm' && s.type!=='cool' && s.type!=='rest'){
+        const mMatch=s.s.match(/([\d.]+)/);
+        if(mMatch){const spd=parseFloat(mMatch[1]);if(spd>0){totalDistTarget+=spd*(s.d/60);totalTimeTarget+=s.d;}}
+      }
+    });
+    const targetPaceMin = totalDistTarget>0 ? (totalTimeTarget/totalDistTarget) : null;
+    // Si allure réelle significativement plus rapide (>5%) que l'allure cible → proposer recalibrage
+    if(targetPaceMin && paceMin < targetPaceMin * 0.95){
+      const estimatedVma = estimateVmaFromPace(paceMin);
+      if(Math.abs(estimatedVma - (PROG.vma||0)) >= 0.3){
+        setTimeout(()=>openRecalibModal(estimatedVma, 'allure', paceMin), 700);
+      } else {
+        PROG.vmaSuspect=true; saveProg(PROG);
+        setTimeout(()=>toast('💡 Tu cours plus vite que prévu — pense à planifier un test VMA'),600);
+        renderPlan(PROG);
+      }
+    }
+  }
+  // Logique moteur feedback — passer l'allure réelle pour permettre recalibrage
+  if(fb.done!==null||fb.why||fb.rpe) applyFeedbackAdjustments(fb, TL_SESS.id, paceMin);
   // Ajouter à l'historique des courses pour les séances race/preprace
   if(TL_SESS.type==='race'||TL_SESS.type==='preprace'){
     addToRaceHistory(TL_SESS, km, durMin, paceStr, todayISO);
