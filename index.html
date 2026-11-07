@@ -1398,10 +1398,10 @@ function updateVMAPreview(){
   const z=calcZones(vma,0,null);
   el.style.display='block';
   el.innerHTML=`<strong>VMA estimée ≈ ${vma} km/h</strong> <span style="font-size:11px;opacity:.65">(depuis ${src})</span><br>
-Z1 EF <span class="vma-zone vz-z1">${(+z.z1.min).toFixed(1)}-${(+z.z1.max).toFixed(1)} km/h</span> · ${kmhToMinKm(z.z1.min)}-${kmhToMinKm(z.z1.max)}<br>
-Z2 Endurance <span class="vma-zone vz-z2">${(+z.z2.min).toFixed(1)}-${(+z.z2.max).toFixed(1)} km/h</span><br>
-Z3 Seuil <span class="vma-zone vz-z3">${(+z.z3.min).toFixed(1)}-${(+z.z3.max).toFixed(1)} km/h</span><br>
-Z4 VMA <span class="vma-zone vz-z4">${(+z.z4.min).toFixed(1)}-${(+z.z4.max).toFixed(1)} km/h</span>`;
+Z1 EF <span class="vma-zone vz-z1">${fmtSpeedRange(z.z1.min,z.z1.max)}</span> · ${kmhToMinKm(z.z1.min)}–${kmhToMinKm(z.z1.max)}<br>
+Z2 Endurance <span class="vma-zone vz-z2">${fmtSpeedRange(z.z2.min,z.z2.max)}</span><br>
+Z3 Seuil <span class="vma-zone vz-z3">${fmtSpeedRange(z.z3.min,z.z3.max)}</span><br>
+Z4 VMA <span class="vma-zone vz-z4">${fmtSpeedRange(z.z4.min,z.z4.max)}</span>${z.course ? `<br>🎯 Allure course <span class="vma-zone" style="background:var(--accent-muted,#e8f5e9);color:var(--accent,#2e7d32)">${fmtSpeedRange(z.course.min,z.course.max)}</span> · ${kmhToMinKm(z.course.min)}/km` : ''}`;
 }
 
 // Chips temps objectif selon distance
@@ -1673,10 +1673,10 @@ function updateVmaRacePreview(){
     if(v*w > bestW){ bestW = v*w; bestEvLabel = `${ev.dist} km${ev.date ? ' · '+new Date(ev.date+'T12:00:00').toLocaleDateString('fr-FR',{month:'short',year:'numeric'}) : ''}`; }
   });
   el.innerHTML = `<strong>🎯 VMA retenue : ${best} km/h</strong>${bestEvLabel ? ` <span style="font-size:11px;opacity:.65">(depuis : ${bestEvLabel})</span>` : ''}<br>
-Z1 EF <span class="vma-zone vz-z1">${(+z.z1.min).toFixed(1)}–${(+z.z1.max).toFixed(1)} km/h</span> &nbsp;
-Z2 Endurance <span class="vma-zone vz-z2">${(+z.z2.min).toFixed(1)}–${(+z.z2.max).toFixed(1)} km/h</span><br>
-Z3 Seuil <span class="vma-zone vz-z3">${(+z.z3.min).toFixed(1)}–${(+z.z3.max).toFixed(1)} km/h</span> &nbsp;
-Z4 VMA <span class="vma-zone vz-z4">${(+z.z4.min).toFixed(1)}–${(+z.z4.max).toFixed(1)} km/h</span><br>
+Z1 EF <span class="vma-zone vz-z1">${fmtSpeedRange(z.z1.min,z.z1.max)}</span> &nbsp;
+Z2 Endurance <span class="vma-zone vz-z2">${fmtSpeedRange(z.z2.min,z.z2.max)}</span><br>
+Z3 Seuil <span class="vma-zone vz-z3">${fmtSpeedRange(z.z3.min,z.z3.max)}</span> &nbsp;
+Z4 VMA <span class="vma-zone vz-z4">${fmtSpeedRange(z.z4.min,z.z4.max)}</span>${z.course ? ` &nbsp; 🎯 <span class="vma-zone" style="background:var(--accent-muted,#e8f5e9);color:var(--accent,#2e7d32)">${fmtSpeedRange(z.course.min,z.course.max)}</span>` : ''}<br>
 <small style="opacity:.65">Cette valeur remplacera l'estimation par ta vitesse de croisière.</small>`;
 }
 
@@ -1884,7 +1884,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "87";
+const GENERATOR_VERSION = "88";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2314,6 +2314,11 @@ function estimateRenfoDur(e) {
 }
 
 function fmtSpeed(kmh){ return (+kmh).toFixed(1)+' km/h'; }
+// v88 fix#2 — évite "9.2–9.2 km/h" quand min≈max (différence < 0.05 km/h)
+function fmtSpeedRange(minKmh, maxKmh){
+  const a = (+minKmh).toFixed(1), b = (+maxKmh).toFixed(1);
+  return a === b ? a+' km/h' : a+'–'+b+' km/h';
+}
 // fmtPace retourne le pace SANS "/km" (ex: "8:30") — à utiliser dans les textes qui ajoutent "/km" eux-mêmes
 function fmtPace(kmh){ if(!kmh||kmh<=0)return '-'; const total=60/kmh; const m=Math.floor(total); const s=Math.round((total-m)*60); return `${m}:${fmt2(s)}`; }
 function zFmt(z){ return fmtSpeed(z.min)+' - '+fmtSpeed(z.max); }
@@ -2339,23 +2344,26 @@ function calcIndex(vma) {
 function calcZonesV2(vma, allureCible, dist) {
   let e1Max, e2Min, e2Max, t1Min, t1Max, i1Min, i1Max, r1Min, r1Max;
 
+  // v88 fix#3 — extension Z2 jusqu'à 82% VMA pour couvrir le gap Z2→Z3
+  // (gap anciennement 74-83% = ~1.3 km/h sans zone nommée, couvrant l'allure marathon)
+  // Z2 "Endurance active" couvre maintenant 65-82% VMA selon le niveau
   if (vma < 12) {
     // VMA faible: zones plus basses, R interdite
     e1Max  = vma * 0.63;
-    e2Min  = vma * 0.63; e2Max = vma * 0.72;
-    t1Min  = vma * 0.73; t1Max = vma * 0.78;
+    e2Min  = vma * 0.63; e2Max = vma * 0.78; // étendu 72→78%
+    t1Min  = vma * 0.78; t1Max = vma * 0.84; // remonté 73-78→78-84%
     i1Min  = vma * 0.88; i1Max = vma * 0.95;
     r1Min  = 0;          r1Max = 0; // interdit
   } else if (vma < 16) {
     e1Max  = vma * 0.65;
-    e2Min  = vma * 0.65; e2Max = vma * 0.74;
-    t1Min  = vma * 0.83; t1Max = vma * 0.88;
+    e2Min  = vma * 0.65; e2Max = vma * 0.82; // étendu 74→82% (couvre allure marathon ~75%)
+    t1Min  = vma * 0.82; t1Max = vma * 0.88; // abaissé 83→82%
     i1Min  = vma * 0.95; i1Max = vma * 1.00;
     r1Min  = vma * 1.05; r1Max = vma * 1.10;
   } else {
     e1Max  = vma * 0.68;
-    e2Min  = vma * 0.68; e2Max = vma * 0.75;
-    t1Min  = vma * 0.85; t1Max = vma * 0.90;
+    e2Min  = vma * 0.68; e2Max = vma * 0.83; // étendu 75→83%
+    t1Min  = vma * 0.83; t1Max = vma * 0.90; // abaissé 85→83%
     i1Min  = vma * 0.97; i1Max = vma * 1.02;
     r1Min  = vma * 1.07; r1Max = vma * 1.15;
   }
@@ -2519,14 +2527,20 @@ function calcVolumeSchedule(nWeeks, basKm, phaseConfig, dist, index) {
 
     let vol;
     if (isTaper) {
-      // Taper: réduction progressive (Mujika: -40% à -60%)
+      // v88 fix#10 — taper -20-25%/semaine (Mujika 2003: -40-60% sur 2-3 sem)
+      // Norme : S-3 → -20%, S-2 → -40%, S-1 → -60% du pic
       // Fix #4 — taper 10km lissé : première semaine moins brutale
       const taperPos = (i - phaseConfig.p3End) / phaseConfig.taperW;
       const peakVol = lastChargeVol;
       if (dist <= 10 && phaseConfig.taperW >= 2) {
-        vol = peakVol * (0.80 - taperPos * 0.30);
+        // 10km: 2 semaines taper — S-2: -20%, S-1: -45%
+        vol = peakVol * (0.80 - taperPos * 0.35);
+      } else if (phaseConfig.taperW >= 3) {
+        // Marathon 3 semaines taper — S-3: -20%, S-2: -40%, S-1: -60%
+        vol = peakVol * (0.80 - taperPos * 0.40);
       } else {
-        vol = peakVol * (0.65 - taperPos * 0.20);
+        // Semi/marathon 2 semaines taper — S-2: -25%, S-1: -55%
+        vol = peakVol * (0.75 - taperPos * 0.30);
       }
     } else if (isDecharge) {
       // Fix #6 — décharge sur lastChargeVol (pas vols[i-1])
@@ -2585,6 +2599,9 @@ function longRunSchedule(nWeeks, dist) {
   else if (dist <= 21.2) { basMin = 60;  peakMin = 110; }
   else                   { basMin = 80;  peakMin = 160; } // marathon : 80min → 2h40
 
+  // v88 fix — éviter deux SL consécutives au pic (150+150min → 135+150min)
+  // Pfitzinger: une seule sortie ultra-longue par bloc, puis légère décharge avant la suivante
+  let prevSLMin = 0;
   for (let i = 0; i < nWeeks; i++) {
     if (i === nWeeks - 1) { sched.push(0); continue; }
 
@@ -2592,12 +2609,17 @@ function longRunSchedule(nWeeks, dist) {
 
     // Palier 2+1 : semaines de décharge à 75% du niveau atteint
     if (isDechargeWeek(i, nWeeks - 1, null)) {
-      sched.push(Math.round(basMin + (peakMin - basMin) * Math.max(0, progress - 0.1)));
+      const dur = Math.round(basMin + (peakMin - basMin) * Math.max(0, progress - 0.1));
+      sched.push(dur);
+      prevSLMin = dur;
     } else {
       const raw = basMin + (peakMin - basMin) * progress;
-      // Garantir au moins 2h30 (150min) sur les semaines pic pour marathon (≥S-8)
       const minPeak = (dist >= 42 && progress >= 0.65) ? 150 : 0;
-      sched.push(Math.max(minPeak, Math.round(raw)));
+      let dur = Math.max(minPeak, Math.round(raw));
+      // Cap si SL précédente était déjà au pic (≥140min) : limiter à 135min max
+      if (dist >= 42 && prevSLMin >= 140 && dur >= 150) dur = 135;
+      sched.push(dur);
+      prevSLMin = dur;
     }
   }
   return sched;
@@ -2645,7 +2667,7 @@ function warmupSteps(Z, durMin, withMobilite) {
   durMin = durMin || 15;
   const mobNote = withMobilite !== false ? ` + mobilité dynamique (éducatifs)` : '';
   const steps = [
-    { t: 'active', d: withMobilite !== false ? 10 : 5, txt: `Échauffement footing doux${mobNote} · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` },
+    { t: 'active', d: withMobilite !== false ? 10 : 5, txt: `Échauffement footing doux${mobNote} · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` },
     { t: 'active', d: Math.max(5, durMin - (withMobilite !== false ? 10 : 5)), txt: `Montée progressive · finir à ${fmtSpeed(Z.z2.max)} · ${fmtPace(Z.z2.max)}/km` },
   ];
   return steps;
@@ -2655,7 +2677,7 @@ function warmupSteps(Z, durMin, withMobilite) {
 function cooldownSteps(Z, durMin) {
   durMin = durMin || 10;
   return [
-    { t: 'rest', d: durMin, txt: `Retour au calme footing doux · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` }
+    { t: 'rest', d: durMin, txt: `Retour au calme footing doux · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` }
   ];
 }
 
@@ -2663,7 +2685,7 @@ function cooldownSteps(Z, durMin) {
 // withCadence: true en P1 → consigne cadence 170-180 pas/min (Heiderscheit 2011)
 function footingSteps(Z, durMin, withCadence) {
   durMin = durMin || 40;
-  const baseLabel = `Footing endurance fondamentale · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)} · ${fmtPace(Z.z1.max)}/km`;
+  const baseLabel = `Footing endurance fondamentale · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · ${fmtPace(Z.z1.max)}/km`;
   if (!withCadence) {
     return [{ t: 'active', d: durMin, txt: baseLabel }];
   }
@@ -2680,12 +2702,14 @@ function footingSteps(Z, durMin, withCadence) {
 // Récupération active
 // Sources: Dupont 2004 — footing < 65% FCmax > repos pour élimination lactate
 function recupSteps(Z) {
-  const fcMax = Math.round(Z.vma * 3.8 + 60); // estimation FCmax depuis VMA (Léger)
-  const fcCible = Math.round(fcMax * 0.63);
-  const allureCible = fmtSpeed(Z.z1.min * 0.9);
+  // v88 fix bonus — FCmax estimée depuis VMA (Léger 1988: FCmax ≈ 3.8×VMA + 60)
+  // La cible récup = 63% FCmax (Dupont 2004) — affiché correctement
+  const fcMax = Math.round(Z.vma * 3.8 + 60);
+  const fcCible = Math.round(fcMax * 0.63); // ~115 bpm pour FCmax=184
+  const allureCibleStr = fmtSpeed(Z.z1.min * 0.9);
   return [
     { t: 'rest', d: 5,
-      txt: `Marche active ou footing très lent · < ${fcCible} bpm (63% FCmax) · ${allureCible} max · ne pas forcer` },
+      txt: `Marche active ou footing très lent · < ${fcCible} bpm (63% FCmax estimée ${fcMax}) · ${allureCibleStr} max · ne pas forcer` },
     { t: 'rest', d: 25,
       txt: `Récupération active · ${fmtSpeed(Z.z1.min * 0.9)}–${fmtSpeed(Z.z1.min)} · ${fmtPace(Z.z1.min)}/km max · conversation possible sans effort · alternative : vélo doux ou nage si J+1 sortie longue` },
   ];
@@ -2720,7 +2744,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const effortMin = Math.round(effortSec / 6) / 10; // arrondi 0.1 min
       for (let r = 1; r <= reps; r++) {
         steps.push({ t: 'qual', d: effortMin, txt: `Répétition ${r}/${reps} · ${distM}m @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
-        if (r < reps) steps.push({ t: 'rest', d: Math.round(recupSec / 60 * 10) / 10, txt: `Récup ${recupStr} footing doux · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)}` });
+        if (r < reps) steps.push({ t: 'rest', d: Math.round(recupSec / 60 * 10) / 10, txt: `Récup ${recupStr} footing doux · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
       }
       break;
     }
@@ -2741,7 +2765,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const effortMin = Math.max(1, Math.round(effortSec / 60));
       for (let r = 1; r <= reps; r++) {
         steps.push({ t: 'qual', d: effortMin, txt: `Répétition ${r}/${reps} · ${distM}m @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
-        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupMin}min footing · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)}` });
+        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupMin}min footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
       }
       break;
     }
@@ -2759,7 +2783,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const effortMin = Math.max(1, Math.round(effortSec / 60));
       for (let r = 1; r <= reps; r++) {
         steps.push({ t: 'qual', d: effortMin, txt: `Répétition ${r}/${reps} · ${distM}m @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
-        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupMin}min footing · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)}` });
+        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupMin}min footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
       }
       break;
     }
@@ -2786,10 +2810,14 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
     }
 
     // — Tempo (seuil lactique) —
+    // v88 fix#5 — progression continue P1→P2→P3 (pas de reset à 0 par phase)
+    // P1: 20→30min · P2: 28→38min · P3: 35→45min — base adaptée au niveau
     case 'tempo': {
       const pctVma = vma < 12 ? 0.76 : vma < 16 ? 0.85 : 0.87;
       const speed = vma * pctVma;
-      const tempoMin = Math.min(Math.round(20 + index * 20 + phasePos * 10), 45);
+      const baseMin = phase === 'phase1' ? 20 : phase === 'phase2' ? 28 : 35;
+      const rangeMin = 10; // progression dans la phase
+      const tempoMin = Math.min(Math.round(baseMin + index * 5 + phasePos * rangeMin), 45);
       const pacePer = fmtPace(speed);
       steps.push({ t: 'qual', d: tempoMin, txt: `Tempo seuil · ${tempoMin}min @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
       break;
@@ -2858,7 +2886,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const recupMin = Math.max(1, Math.round(recupSec / 60));
       for (let b = 1; b <= nBlocs; b++) {
         steps.push({ t: 'qual', d: blocMin, txt: `Bloc ${b}/${nBlocs} · ${durStr} @ allure cible · ${fmtSpeed(allureCible)} · ${pacePer}/km` });
-        if (b < nBlocs) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupStr} footing · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)}` });
+        if (b < nBlocs) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupStr} footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
       }
       break;
     }
@@ -2897,7 +2925,7 @@ function longRunSteps(Z, durMin, blocsMin, blocsIdx, allureCible) {
 
   // Toujours commencer en E1
   steps.push({ t: 'active', d: Math.round(durMin * 0.15),
-    txt: `Départ doux · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` });
+    txt: `Départ doux · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` });
 
   if (blocsMin && blocsMin > 0) {
     // 3 blocs calculés selon position dans programme
@@ -2938,7 +2966,7 @@ function longRunSteps(Z, durMin, blocsMin, blocsIdx, allureCible) {
       { t: 'active', d: mainDur,
         txt: `Footing continu endurance fondamentale · ${fmtSpeed(Z.z1.max)}–${fmtSpeed(Z.z2.min)} · ${fmtPace(Z.z2.min)}/km` },
       { t: 'rest', d: durMin - Math.round(durMin * 0.15) - mainDur,
-        txt: `Retour au calme · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` }
+        txt: `Retour au calme · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` }
     );
   }
 
@@ -2970,7 +2998,7 @@ function prepRaceSteps(Z, dist, allureCible) {
   // Allure légèrement en dessous de l'objectif pour la course test (+3-5%) : évite la sur-sollicitation
   const testSpeed = allureCible ? allureCible * 0.97 : Z.z3.min;
   return [
-    { t: 'active', d: 15, txt: `Échauffement · ${fmtSpeed(Z.z1.min)}–${fmtSpeed(Z.z1.max)} · éducatifs dynamiques` },
+    { t: 'active', d: 15, txt: `Échauffement · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · éducatifs dynamiques` },
     { t: 'qual',   d: durMin, txt: `Course test ${durMin}min · allure objectif -3% · ${fmtSpeed(testSpeed)} · ${fmtPace(testSpeed)}/km · ressentis et gestion de l'effort` },
     { t: 'rest',   d: 10, txt: `Retour au calme · ${fmtSpeed(Z.z1.min)}` }
   ];
@@ -3228,9 +3256,12 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
       // 1. Fractionné très court : rappels vitesse (réveiller les jambes)
       const tapLastSteps = [];
       tapLastSteps.push(...warmupSteps(Z, 12, false));
+      // v88 fix#8 — indiquer la vitesse cible pour les rappels allure 10km
+      const allure10kmSpeed = vma * 0.93; // ~93% VMA = allure 10km (Daniels)
+      const allure10kmPace = fmtPace(allure10kmSpeed);
       const repsCount = 5;
       for (let r = 1; r <= repsCount; r++) {
-        tapLastSteps.push({ t:'qual', d:3, txt:`Rep ${r}/${repsCount} · 3 min à allure 10km · relâché, jambes vives` });
+        tapLastSteps.push({ t:'qual', d:3, txt:`Rep ${r}/${repsCount} · 3 min à allure 10km · ${fmtSpeed(allure10kmSpeed)} · ${allure10kmPace}/km · relâché, jambes vives` });
         if (r < repsCount) tapLastSteps.push({ t:'rest', d:2, txt:'2 min footing très lent' });
       }
       tapLastSteps.push(...cooldownSteps(Z, 10));
@@ -3306,12 +3337,19 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
   if (longMin > 0) {
     let blocsMin = 0;
     const hasQualSess = runSessions.some(s => s.type === 'frac' || s.type === 'specific');
-    if (phase === 'phase3' && !hasQualSess) {
-      // Phase3 sans séance qualitative : SL avec blocs allure progressifs (20% → 35%)
+    if (phase === 'phase3' && allureCible) {
+      // v88 fix#7/#9 — Phase3 avec allureCible : SL avec blocs allure cible systématiquement
+      // Pfitzinger: intégrer l'allure marathon dans TOUTES les SL de phase3
+      // Si séance qualitative ce jour : blocs plus courts (15-25% SL max)
+      // Si pas de qual : blocs plus longs (20-35% SL)
+      const maxBlocsRatio = hasQualSess ? 0.15 + phasePos * 0.10 : 0.20 + phasePos * 0.15;
+      blocsMin = Math.floor(longMin * maxBlocsRatio);
+    } else if (phase === 'phase3' && !hasQualSess) {
+      // Phase3 sans allureCible : blocs en endurance active (Z2)
       const blocsRatio = 0.20 + phasePos * 0.15;
       blocsMin = Math.floor(longMin * blocsRatio);
     }
-    // Phase3 avec séance frac/specific : SL en endurance pure (pas de double stress qualitatif)
+    // Phase1/2 : SL en endurance pure (construire le temps sur pied)
     runSessions.push({ type:'long', title: blocsMin > 0 ? 'Sortie longue avec blocs allure' : 'Sortie longue endurance', steps: longRunSteps(Z, longMin, blocsMin, qualIdx, allureCible) });
   } else if (runSessions.length < effectiveSessions) {
     runSessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 40) });
@@ -3382,8 +3420,11 @@ function generateProgram(){
   const phaseConfig = calcPhaseDurations(nWeeks, Q.dist, index);
   // v67 — calcVolumeSchedule connecté : volumes cibles réels par semaine
   const weekVols = calcVolumeSchedule(nWeeks, Q.volume||null, phaseConfig, Q.dist, index);
-  // Course intermédiaire : priorité à la date explicite (Q.intermediateRace), sinon placement algorithmique mi-P2
-  let prepRaceW = phaseConfig.p1End + Math.round((phaseConfig.p2End - phaseConfig.p1End) * 0.5);
+  // Course intermédiaire : priorité à la date explicite (Q.intermediateRace)
+  // v88 fix#6 — placement algorithmique à 75% de P2 (non mi-P2) pour marathon
+  // Pfitzinger: course test semi-marathon à 10-12 semaines du marathon
+  const prepRaceRatio = Q.dist >= 42 ? 0.75 : 0.5;
+  let prepRaceW = phaseConfig.p1End + Math.round((phaseConfig.p2End - phaseConfig.p1End) * prepRaceRatio);
   const hasIntermRace = !!(Q.intermediateRace && Q.intermediateRace.raceDate && Q.dist > 10);
   if(hasIntermRace){
     const intermediateMonday = mondayOf(Q.intermediateRace.raceDate);
