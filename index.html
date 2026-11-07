@@ -241,6 +241,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .renfo-done-btn{display:block;width:100%;margin-top:10px;padding:11px;border:none;border-radius:10px;background:var(--border);color:var(--fg-muted);font-size:13px;font-weight:600;cursor:pointer;transition:background .2s}
 .renfo-done-btn:hover{background:var(--accent);color:#fff}
 .renfo-done-ok{background:#e6f7ee;color:#1e6b3a}
+/* Feedback séance */
+.fb-toggle{transition:all .15s}
+.fb-toggle.active{border-color:var(--accent)!important;background:var(--accent-soft)!important;color:var(--accent)!important}
+.fb-chip{padding:7px 12px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg-muted);font-size:12.5px;cursor:pointer;transition:all .15s}
+.fb-chip.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.fb-rpe{flex:1;padding:8px 4px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg);font-size:18px;cursor:pointer;transition:all .15s;text-align:center}
+.fb-rpe.active{border-color:var(--accent);background:var(--accent-soft);transform:scale(1.08)}
 @media(prefers-color-scheme:dark){.renfo-done-ok{background:#0e2e1c;color:#5cdb8e}}
 :root[data-theme="dark"] .renfo-done-ok{background:#0e2e1c;color:#5cdb8e}
 /* ── Renfo detail modal ───────────────────────────────────────────── */
@@ -770,6 +777,42 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
         <div class="q-hint">Si tu sélectionnes une séance, la course remplace ses données dans le graphique.</div>
       </div>
 
+      <!-- ── Feedback séance ── -->
+      <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--fg);margin-bottom:12px">📋 Bilan de séance</div>
+
+        <div class="q-field">
+          <label class="q-label">As-tu terminé la séance complète ?</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button id="fb-done-oui" onclick="setFbDone(true)" class="fb-toggle" style="flex:1;padding:9px;border-radius:10px;border:2px solid var(--border);background:var(--surface);color:var(--fg);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s">✅ Oui</button>
+            <button id="fb-done-non" onclick="setFbDone(false)" class="fb-toggle" style="flex:1;padding:9px;border-radius:10px;border:2px solid var(--border);background:var(--surface);color:var(--fg);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s">❌ Non</button>
+          </div>
+        </div>
+
+        <div id="fb-why-block" style="display:none" class="q-field">
+          <label class="q-label">Pourquoi tu t'es arrêté ?</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px" id="fb-why-chips">
+            <button class="fb-chip" onclick="setFbWhy('fatigue')" data-why="fatigue">😓 Fatigue</button>
+            <button class="fb-chip" onclick="setFbWhy('allure')" data-why="allure">⚡ Allure trop rapide</button>
+            <button class="fb-chip" onclick="setFbWhy('douleur')" data-why="douleur">🤕 Douleur</button>
+            <button class="fb-chip" onclick="setFbWhy('temps')" data-why="temps">⏰ Manque de temps</button>
+            <button class="fb-chip" onclick="setFbWhy('meteo')" data-why="meteo">🌧 Météo</button>
+            <button class="fb-chip" onclick="setFbWhy('autre')" data-why="autre">🔸 Autre</button>
+          </div>
+        </div>
+
+        <div class="q-field">
+          <label class="q-label">Ressenti d'effort (RPE)</label>
+          <div style="display:flex;gap:6px;margin-top:4px;justify-content:space-between" id="fb-rpe-row">
+            <button class="fb-rpe" onclick="setFbRpe(1)" data-rpe="1" title="Très facile">😌<span style="display:block;font-size:10px;margin-top:2px">1</span></button>
+            <button class="fb-rpe" onclick="setFbRpe(2)" data-rpe="2" title="Facile">🙂<span style="display:block;font-size:10px;margin-top:2px">2</span></button>
+            <button class="fb-rpe" onclick="setFbRpe(3)" data-rpe="3" title="Modéré">😐<span style="display:block;font-size:10px;margin-top:2px">3</span></button>
+            <button class="fb-rpe" onclick="setFbRpe(4)" data-rpe="4" title="Difficile">😤<span style="display:block;font-size:10px;margin-top:2px">4</span></button>
+            <button class="fb-rpe" onclick="setFbRpe(5)" data-rpe="5" title="Maximal">😵<span style="display:block;font-size:10px;margin-top:2px">5</span></button>
+          </div>
+        </div>
+      </div>
+
       <div id="addrun-err" style="display:none;background:var(--accent-soft);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px"></div>
 
       <button class="btn-primary" onclick="saveAddRun()" style="margin-top:8px">Enregistrer la course</button>
@@ -892,7 +935,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   <div class="plan-header">
     <div class="plan-header-top">
       <button class="btn-home" onclick="goHome()" title="Accueil">🏠</button>
-      <div style="flex:1;min-width:0;text-align:left">
+      <div style="flex:1;min-width:0;text-align:left" id="planHeaderInfo">
         <h2 id="planTitle">Mon programme</h2>
         <div class="plan-goal-badge" id="planGoalBadge" style="display:none"></div>
         <div class="plan-meta" id="planMeta"></div>
@@ -1718,7 +1761,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "77";
+const GENERATOR_VERSION = "79";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3798,7 +3841,7 @@ function renderPlan(prog){
   const vmaWarnEl = document.getElementById('vmaWarn') || (()=>{
     const el=document.createElement('div'); el.id='vmaWarn';
     el.style.cssText='margin:4px 0 12px;padding:12px 14px;border-radius:8px;font-size:0.85rem;display:none;text-align:left;width:100%;box-sizing:border-box;';
-    document.getElementById('planMeta').parentNode.appendChild(el); return el;
+    (document.getElementById('planHeaderInfo')||document.getElementById('planMeta').parentNode).appendChild(el); return el;
   })();
   if(allureCible && vma){
     // v64: ratio VMA tenable dépend de la distance (5km≈98%, 10km≈94%, semi≈88%, marathon≈82%)
@@ -3856,13 +3899,37 @@ function renderPlan(prog){
   const vmaReminderEl = document.getElementById('vmaTestReminder') || (()=>{
     const el=document.createElement('div'); el.id='vmaTestReminder';
     el.style.cssText='margin:8px 0 4px;padding:10px 14px;border-radius:8px;font-size:0.82rem;background:#f3ecff;border:1px solid #d4b8ff;color:#6b35b0;display:none;text-align:left;width:100%;box-sizing:border-box;';
-    document.getElementById('planMeta').parentNode.appendChild(el); return el;
+    (document.getElementById('planHeaderInfo')||document.getElementById('planMeta').parentNode).appendChild(el); return el;
   })();
   if(needsVmaReminder){
     vmaReminderEl.style.display='block';
     vmaReminderEl.innerHTML=`💡 <strong>Aucun test VMA planifié</strong> — Un test en cours de programme permet d'ajuster tes zones et séances. <button onclick="openAddVmaTest()" style="background:none;border:none;color:#6b35b0;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;font-size:inherit">Planifier un test</button>`;
   } else {
     vmaReminderEl.style.display='none';
+  }
+
+  // Bannières d'ajustement moteur (feedback séance)
+  const headerInfo=document.getElementById('planHeaderInfo')||document.getElementById('planMeta').parentNode;
+  ['fbFatigueAlert','fbVmaSuspectAlert','fbRecoveryAlert'].forEach(id=>{
+    const old=document.getElementById(id); if(old) old.remove();
+  });
+  if(prog.recoveryNeeded){
+    const el=document.createElement('div'); el.id='fbRecoveryAlert';
+    el.style.cssText='margin:8px 0 4px;padding:10px 14px;border-radius:8px;font-size:0.82rem;background:#fff0f0;border:1px solid #f5b8b8;color:#a00;text-align:left;width:100%;box-sizing:border-box;';
+    el.innerHTML=`🩹 <strong>Douleur signalée</strong> — Une semaine de récupération est recommandée. Consulte un médecin si la douleur persiste. <button onclick="clearProgFlag('recoveryNeeded')" style="background:none;border:none;color:#a00;font-weight:700;cursor:pointer;padding:0 0 0 8px;font-size:inherit">Ignorer ✕</button>`;
+    headerInfo.appendChild(el);
+  }
+  if(prog.fatigueFlag){
+    const el=document.createElement('div'); el.id='fbFatigueAlert';
+    el.style.cssText='margin:8px 0 4px;padding:10px 14px;border-radius:8px;font-size:0.82rem;background:#fff8e1;border:1px solid #ffe082;color:#7a5700;text-align:left;width:100%;box-sizing:border-box;';
+    el.innerHTML=`⚠️ <strong>Fatigue détectée</strong> — Pense à préserver ta récupération cette semaine. <button onclick="clearProgFlag('fatigueFlag')" style="background:none;border:none;color:#7a5700;font-weight:700;cursor:pointer;padding:0 0 0 8px;font-size:inherit">Ignorer ✕</button>`;
+    headerInfo.appendChild(el);
+  }
+  if(prog.vmaSuspect){
+    const el=document.createElement('div'); el.id='fbVmaSuspectAlert';
+    el.style.cssText='margin:8px 0 4px;padding:10px 14px;border-radius:8px;font-size:0.82rem;background:#f3ecff;border:1px solid #d4b8ff;color:#6b35b0;text-align:left;width:100%;box-sizing:border-box;';
+    el.innerHTML=`💡 <strong>Allure perçue comme trop rapide</strong> — Un test VMA permettrait de recalibrer tes zones. <button onclick="openAddVmaTest()" style="background:none;border:none;color:#6b35b0;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;font-size:inherit">Planifier un test</button> <button onclick="clearProgFlag('vmaSuspect')" style="background:none;border:none;color:#6b35b0;font-weight:700;cursor:pointer;padding:0 0 0 8px;font-size:inherit">Ignorer ✕</button>`;
+    headerInfo.appendChild(el);
   }
 
   // Zones bar
@@ -5340,6 +5407,9 @@ function openAddRun(){
   document.getElementById('addrun-pace').value='';
   document.getElementById('addrun-note').value='';
   document.getElementById('addrun-err').style.display='none';
+  // Reset feedback
+  document.querySelectorAll('.fb-toggle,.fb-rpe,.fb-chip').forEach(el=>el.classList.remove('active'));
+  document.getElementById('fb-why-block').style.display='none';
   dpSetValue('00:00:00','addrun');
   focusDurPad('addrun');
 
@@ -5359,6 +5429,72 @@ function closeAddRun(e){
   document.body.style.overflow='';
 }
 
+
+// ── Feedback de séance ──────────────────────────────────────────────────────
+function setFbDone(val){
+  document.getElementById('fb-done-oui').classList.toggle('active', val===true);
+  document.getElementById('fb-done-non').classList.toggle('active', val===false);
+  document.getElementById('fb-why-block').style.display = val===false ? 'block' : 'none';
+  if(val===true){
+    document.querySelectorAll('.fb-chip').forEach(c=>c.classList.remove('active'));
+  }
+}
+function setFbWhy(why){
+  document.querySelectorAll('.fb-chip').forEach(c=>c.classList.toggle('active', c.dataset.why===why));
+}
+function setFbRpe(n){
+  document.querySelectorAll('.fb-rpe').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.rpe)===n));
+}
+function getFbState(){
+  const doneOui=document.getElementById('fb-done-oui').classList.contains('active');
+  const doneNon=document.getElementById('fb-done-non').classList.contains('active');
+  const done = doneOui ? true : doneNon ? false : null;
+  const whyEl=document.querySelector('.fb-chip.active');
+  const why = whyEl ? whyEl.dataset.why : null;
+  const rpeEl=document.querySelector('.fb-rpe.active');
+  const rpe = rpeEl ? parseInt(rpeEl.dataset.rpe) : null;
+  return {done, why, rpe};
+}
+
+// Logique moteur : ajustements après feedback
+function applyFeedbackAdjustments(fb, sessId){
+  if(!PROG) return;
+  const alerts=[];
+  // 1. Fatigue + RPE ≥ 4 → réduire charge semaine suivante
+  if(fb.done===false && fb.why==='fatigue' && fb.rpe>=4){
+    PROG.fatigueFlag=true;
+    alerts.push('⚠️ Fatigue détectée — la charge de la prochaine semaine sera légèrement réduite.');
+  }
+  // 2. Allure trop rapide → suspecter VMA sous-estimée
+  if(fb.why==='allure'){
+    PROG.vmaSuspect=true;
+    alerts.push('💡 Allure perçue comme trop rapide — pense à planifier un test VMA pour recalibrer ton programme.');
+  }
+  // 3. Douleur → semaine de récupération conseillée
+  if(fb.why==='douleur'){
+    PROG.recoveryNeeded=true;
+    alerts.push('🩹 Douleur signalée — une semaine de récupération est recommandée. Consulte un médecin si la douleur persiste.');
+  }
+  // 4. RPE ≥ 5 seul (séance terminée mais épuisante)
+  if(fb.done===true && fb.rpe===5){
+    PROG.fatigueFlag=true;
+    alerts.push('⚠️ Séance très difficile (RPE 5) — la charge de la prochaine semaine sera légèrement réduite.');
+  }
+  if(alerts.length>0){
+    saveProg();
+    // Afficher les alertes dans un toast étendu
+    setTimeout(()=>{
+      alerts.forEach((msg,i)=>setTimeout(()=>toast(msg),i*2200));
+    },400);
+  }
+}
+
+function clearProgFlag(flag){
+  if(!PROG) return;
+  delete PROG[flag];
+  saveProg();
+  renderPlan(PROG);
+}
 
 function saveAddRun(){
   const date=document.getElementById('addrun-date').value;
@@ -5393,11 +5529,27 @@ function saveAddRun(){
     if(n>1) targetId=targetId+'_'+n;
   }
 
+  // Lire le feedback
+  const fb=getFbState();
+
   TRAIN_DATA[targetId]={km:km.toFixed(1),date,note:note||undefined};
   if(pace) TRAIN_DATA[targetId].pace=pace;
   if(durationSec>0) TRAIN_DATA[targetId].duration=durationSec;
   if(!sessId) TRAIN_DATA[targetId].free=true;
+  // Stocker le feedback si renseigné
+  if(fb.done!==null||fb.rpe!==null){
+    TRAIN_DATA[targetId].feedback={
+      done: fb.done,
+      why: fb.why||undefined,
+      rpe: fb.rpe||undefined
+    };
+  }
   saveTrain();
+
+  // Appliquer ajustements moteur si feedback complet
+  if(fb.done!==null||fb.why||fb.rpe){
+    applyFeedbackAdjustments(fb, targetId);
+  }
 
   closeAddRun();
   renderPlan(PROG);
