@@ -15,6 +15,7 @@ function loadScript(src){ var s=document.createElement('script'); s.src=src; s.a
 window.addEventListener('DOMContentLoaded',function(){
   loadScript('https://code.responsivevoice.org/responsivevoice.js?key=FREE');
   loadScript('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
+  setTimeout(_updateEncourageSwitch, 50);
 });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -128,6 +129,11 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .btn-hdr-add:hover{background:var(--accent);color:#fff}
 .btn-hdr-vma{background:transparent;border:1.5px solid #6b35b0;color:#6b35b0;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
 .btn-hdr-vma:hover{background:#6b35b0;color:#fff}
+/* Switch encouragements */
+#encourage-switch{background:var(--border)}
+#encourage-switch.on{background:#2e7d32}
+#encourage-switch.on #encourage-knob{transform:translateX(20px)}
+#encourage-switch-lbl{transition:color .2s}
 /* dark mode overrides */
 @media(prefers-color-scheme:dark){
   :root:not([data-theme="light"]) .btn-hdr-edit,:root:not([data-theme="light"]) .btn-hdr-regen{border-color:#7c5cbf;color:#c5a8f0}
@@ -491,6 +497,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     <span class="home-version" id="home-version-label"></span>
   </div>
   <div id="home-content"></div>
+  <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:13px;color:var(--fg-muted)">💬 Encouragements</span>
+      <span id="encourage-switch-lbl" style="font-size:12px;color:var(--fg-muted);font-weight:600"></span>
+    </div>
+    <button id="encourage-switch" onclick="encourageToggle()" style="position:relative;width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;background:var(--border);transition:background .2s;flex-shrink:0;padding:0">
+      <span style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;display:block;pointer-events:none" id="encourage-knob"></span>
+    </button>
+  </div>
   <div style="padding:12px 16px 16px;border-top:1px solid var(--border)">
     <button class="home-new-btn" style="width:100%;justify-content:center;font-size:14px" onclick="homeNewPlan()">＋ Nouveau programme</button>
   </div>
@@ -1931,7 +1946,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "98";
+const GENERATOR_VERSION = "99";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5093,6 +5108,81 @@ function buildPlanChart(weeks, Z) {
 // =======================================================================
 let _voiceEnabled=true, _blobUrls={}, _silentEl=null, _wakeLock=null, _annTO=null;
 
+// =======================================================================
+// MESSAGES D'ENCOURAGEMENT
+// =======================================================================
+const ENCOURAGE_MSGS=[
+  "Tu es exactement où tu dois être. Continue.",
+  "Chaque seconde compte. Reste concentré sur ton but.",
+  "Bravo, garde ce rythme.",
+  "Tu fais le travail que personne ne peut faire à ta place.",
+  "C'est ici que les progrès se construisent. Go !",
+  "Tu l'as déjà fait avant. Tu peux le refaire.",
+  "Ne lâche rien !",
+  "Chaque kilomètre parcouru te rapproche de ton but.",
+  "Quelqu'un, quelque part, est en train de se reposer sur le canapé. Pas toi.",
+  "Tu souffres maintenant. Tu souris dimanche.",
+  "Tes jambes veulent s'arrêter. Ta tête décide.",
+  "Tu n'es pas fatigué. Tu es en train de devenir meilleur."
+];
+let _encourageEnabled = (localStorage.getItem('rp_encourage')==='false') ? false : true;
+let _encourageTimes = []; // timestamps (sec) où déclencher un message
+let _encourageIdx = 0;    // index dans la liste mélangée
+let _encourageShuffled = [];
+let _encourageLastFired = -1;
+
+function encourageToggle(){
+  _encourageEnabled=!_encourageEnabled;
+  localStorage.setItem('rp_encourage', _encourageEnabled?'true':'false');
+  _updateEncourageSwitch();
+}
+function _updateEncourageSwitch(){
+  const sw=document.getElementById('encourage-switch');
+  const lbl=document.getElementById('encourage-switch-lbl');
+  if(!sw)return;
+  sw.classList.toggle('on',_encourageEnabled);
+  if(lbl) lbl.textContent=_encourageEnabled?'Activés':'Désactivés';
+}
+
+// Planifie les timestamps (en secondes dans la séance) pour les messages
+function planEncourageTimes(totalSec){
+  _encourageTimes=[];
+  _encourageLastFired=-1;
+  if(totalSec<=0) return;
+  const totalMin=totalSec/60;
+  // Nombre de messages selon durée
+  let n=0;
+  if(totalMin<15) n=0;
+  else if(totalMin<30) n=1;
+  else if(totalMin<45) n=1;
+  else if(totalMin<75) n=2;
+  else if(totalMin<105) n=3;
+  else n=3+Math.floor((totalMin-105)/30);
+  if(n<=0) return;
+  // Mélanger les messages
+  _encourageShuffled=[...ENCOURAGE_MSGS].sort(()=>Math.random()-0.5);
+  _encourageIdx=0;
+  // Répartir les timestamps : diviser la séance en (n+1) tranches égales
+  for(let i=1;i<=n;i++){
+    const t=Math.round(totalSec*i/(n+1));
+    _encourageTimes.push(t);
+  }
+}
+
+function checkEncourage(elSec){
+  if(!_encourageEnabled||!_encourageTimes.length)return;
+  for(let i=0;i<_encourageTimes.length;i++){
+    const t=_encourageTimes[i];
+    if(elSec>=t&&elSec<t+1&&_encourageLastFired!==i){
+      _encourageLastFired=i;
+      const msg=_encourageShuffled[_encourageIdx%_encourageShuffled.length];
+      _encourageIdx++;
+      speakStep(msg);
+      break;
+    }
+  }
+}
+
 function durToSpeech(min){
   if(!min||min<=0) return '';
   if(min<1) return Math.round(min*60)+' secondes';
@@ -5218,6 +5308,8 @@ function openTL(id){
   updateTrainBadge();
   renderBar(); renderTLList(-1); updateTLStats();
   chronoReset();
+  // Planifier les messages d'encouragement
+  planEncourageTimes(TL_TOTAL);
   // Bouton stop VMA : visible uniquement pour vma_test
   const stopBtn=document.getElementById('tlVmaStopBtn');
   if(stopBtn) stopBtn.style.display=TL_SESS.type==='vma_test'?'':'none';
@@ -5314,7 +5406,7 @@ function chronoToggle(){
 }
 
 function chronoReset(){
-  clearInterval(_ival); _running=false; _elapsed=0; _startWall=null; _curStep=-1; _announced=-1;
+  clearInterval(_ival); _running=false; _elapsed=0; _startWall=null; _curStep=-1; _announced=-1; _encourageLastFired=-1;
   document.getElementById('tlBtnPlay').textContent='▶ Démarrer';
   document.getElementById('tlBtnPlay').classList.remove('play');
   document.getElementById('tlChrono').textContent='00:00:00';
@@ -5330,6 +5422,7 @@ function chronoTick(){
   for(let i=0;i<TL_STEPS.length;i++){if(elSec<TL_STEPS[i].endSec){ai=i;break;}}
   if(ai!==_curStep){_curStep=ai;hlStep(ai);}
   checkAnnounce(elSec);
+  checkEncourage(elSec);
   // vma_test : pas de stop automatique (durée variable selon l'effort)
   if(elSec>=TL_TOTAL&&TL_TOTAL>0&&TL_SESS&&TL_SESS.type!=='vma_test'){chronoToggle();announce('Séance terminée ! 🎉');if(_voiceEnabled)speakStep('Séance terminée. Bravo !');}
 }
