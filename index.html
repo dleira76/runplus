@@ -15,7 +15,7 @@ function loadScript(src){ var s=document.createElement('script'); s.src=src; s.a
 window.addEventListener('DOMContentLoaded',function(){
   loadScript('https://code.responsivevoice.org/responsivevoice.js?key=FREE');
   loadScript('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
-  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();}, 50);
+  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();_updateHrSwitch();}, 50);
 });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -515,6 +515,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     </div>
     <button id="gps-switch" class="tog" onclick="gpsToggle()">
       <span class="tog-knob" id="gps-knob"></span>
+    </button>
+  </div>
+  <div class="home-switch-row">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="home-switch-label">❤️ Pulsations cardiaques</span>
+      <span id="hr-switch-lbl" class="home-switch-sublbl"></span>
+    </div>
+    <button id="hr-switch" class="tog" onclick="hrToggle()">
+      <span class="tog-knob" id="hr-knob"></span>
     </button>
   </div>
   <div style="padding:12px 16px 16px;border-top:1px solid var(--border)">
@@ -1298,6 +1307,21 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   </div>
 </div>
 
+<!-- ══ MODAL PULSATIONS CARDIAQUES ════════════════════════════════════════ -->
+<div id="hr-overlay" style="display:none;position:fixed;inset:0;z-index:650;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center">
+  <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px 20px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 32px rgba(0,0,0,.2)">
+    <div style="width:36px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 16px"></div>
+    <div style="font-size:17px;font-weight:800;color:var(--fg);margin-bottom:4px">❤️ Pulsations cardiaques</div>
+    <div style="font-size:13px;color:var(--fg-muted);margin-bottom:10px">Saisissez les pulsations que vous avez retenues pendant la séance.</div>
+    <div style="font-size:12px;color:var(--fg-muted);background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:14px">💡 Ces valeurs sont aussi disponibles après la course sur votre montre connectée (Garmin, Suunto, Apple Watch…) pour plus de précision.</div>
+    <div id="hr-fields"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button onclick="closeHrModal()" style="flex:1;padding:12px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg-muted);font-size:14px;font-weight:600;cursor:pointer">Passer</button>
+      <button onclick="saveHrModal()" style="flex:1;padding:12px;border-radius:12px;border:none;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL RECALIBRAGE VMA ══════════════════════════════════════════════ -->
 <div id="recalib-overlay" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center">
   <div id="recalib-sheet" style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px 20px calc(24px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 32px rgba(0,0,0,.2)">
@@ -1958,7 +1982,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "101";
+const GENERATOR_VERSION = "102";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5396,6 +5420,8 @@ function openTL(id){
   chronoReset();
   // Planifier les messages d'encouragement
   planEncourageTimes(TL_TOTAL);
+  // Planifier les prises de pulsations cardiaques
+  planHrTimes(TL_TOTAL);
   // Bouton stop VMA : visible uniquement pour vma_test
   const stopBtn=document.getElementById('tlVmaStopBtn');
   if(stopBtn) stopBtn.style.display=TL_SESS.type==='vma_test'?'':'none';
@@ -5511,8 +5537,14 @@ function chronoTick(){
   if(ai!==_curStep){_curStep=ai;hlStep(ai);}
   checkAnnounce(elSec);
   checkEncourage(elSec);
+  checkHr(elSec);
   // vma_test : pas de stop automatique (durée variable selon l'effort)
-  if(elSec>=TL_TOTAL&&TL_TOTAL>0&&TL_SESS&&TL_SESS.type!=='vma_test'){chronoToggle();announce('Séance terminée ! 🎉');if(_voiceEnabled)speakStep('Séance terminée. Bravo !');}
+  if(elSec>=TL_TOTAL&&TL_TOTAL>0&&TL_SESS&&TL_SESS.type!=='vma_test'){
+    chronoToggle();
+    announce('Séance terminée ! 🎉');
+    if(_voiceEnabled)speakStep('Séance terminée. Bravo !');
+    if(_hrEnabled&&_hrTimes.length) setTimeout(()=>openHrModal(TL_SESS.id),1500);
+  }
 }
 
 function checkAnnounce(elSec){
@@ -6140,10 +6172,10 @@ function saveAddRun(){
   renderPlan(PROG);
   toast('Course ajoutée ✓');
 
-  // Proposer recalibrage VMA si distance ≥ 5 km et durée connue
-  if(km>=5 && durationSec>0){
+  // Proposer recalibrage VMA si distance ≥ 3 km et durée connue
+  if(km>=3 && durationSec>0){
     checkVmaRecalibFromAddRun(km, durationSec);
-  } else if(km>=5 && pace){
+  } else if(km>=3 && pace){
     // Calculer durée depuis l'allure si pas de durée directe
     const paceMin=paceToMin(pace);
     if(paceMin>0){
@@ -7298,9 +7330,112 @@ if('serviceWorker' in navigator) {
   });
 }
 
+// =======================================================================
+// PULSATIONS CARDIAQUES
+// =======================================================================
+
+let _hrEnabled = (localStorage.getItem('rp_hr')==='true');
+let _hrTimes = [];      // timestamps (sec) où annoncer la prise de mesure
+let _hrLabels = [];     // libellés correspondants
+let _hrFired = [];      // booléens : annonce déjà faite ?
+let _hrPendingId = null; // id de la séance en attente de saisie FC
+
+function hrToggle(){
+  _hrEnabled=!_hrEnabled;
+  localStorage.setItem('rp_hr',_hrEnabled?'true':'false');
+  _updateHrSwitch();
+}
+function _updateHrSwitch(){
+  const sw=document.getElementById('hr-switch');
+  const lbl=document.getElementById('hr-switch-lbl');
+  if(!sw)return;
+  sw.classList.toggle('on',_hrEnabled);
+  const knob=document.getElementById('hr-knob');
+  if(knob) knob.style.transform=_hrEnabled?'translateX(20px)':'';
+  if(lbl) lbl.textContent=_hrEnabled?'Activé':'Désactivé';
+}
+
+function planHrTimes(totalSec){
+  _hrTimes=[]; _hrLabels=[]; _hrFired=[];
+  if(!_hrEnabled||totalSec<=0) return;
+  const totalMin=totalSec/60;
+  // < 20 min : aucune mesure
+  if(totalMin<20) return;
+  if(totalMin<40){
+    // 1 mesure : pic effort à 80%
+    _hrTimes=[Math.round(totalSec*0.80)];
+    _hrLabels=['pic d\'effort'];
+  } else if(totalMin<70){
+    // 2 mesures : effort soutenu 60% + pic 85%
+    _hrTimes=[Math.round(totalSec*0.60), Math.round(totalSec*0.85)];
+    _hrLabels=['effort soutenu','pic d\'effort'];
+  } else {
+    // 3 mesures : montée 50% + soutenu 70% + pic 88%
+    _hrTimes=[Math.round(totalSec*0.50), Math.round(totalSec*0.70), Math.round(totalSec*0.88)];
+    _hrLabels=['montée en charge','effort soutenu','pic d\'effort'];
+  }
+  _hrFired=_hrTimes.map(()=>false);
+}
+
+function checkHr(elSec){
+  if(!_hrEnabled||!_hrTimes.length) return;
+  for(let i=0;i<_hrTimes.length;i++){
+    const t=_hrTimes[i];
+    if(elSec>=t && elSec<t+2 && !_hrFired[i]){
+      _hrFired[i]=true;
+      speakStep('Prenez vos pulsations maintenant, retenez-les');
+      announce('❤️ Retenez vos pulsations');
+      break;
+    }
+  }
+}
+
+function openHrModal(sessId){
+  if(!_hrEnabled||!_hrTimes.length) return;
+  _hrPendingId=sessId;
+  const fmtTime=s=>{const m=Math.floor(s/60),sec=s%60;return m+'\''+String(sec).padStart(2,'0');};
+  const html=_hrTimes.map((t,i)=>`
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;color:var(--fg-muted);margin-bottom:4px">
+        Mesure ${i+1} — <strong>${_hrLabels[i]}</strong> (vers ${fmtTime(t)})
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input id="hr-val-${i}" type="number" min="40" max="230" placeholder="ex: 162"
+          style="width:100px;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:16px;font-family:var(--mono)">
+        <span style="font-size:13px;color:var(--fg-muted)">bpm</span>
+      </div>
+    </div>`).join('');
+  document.getElementById('hr-fields').innerHTML=html;
+  const ov=document.getElementById('hr-overlay');
+  ov.style.display='flex';
+  setTimeout(()=>{ov.style.opacity='1';},10);
+}
+
+function closeHrModal(){
+  document.getElementById('hr-overlay').style.display='none';
+  _hrPendingId=null;
+}
+
+function saveHrModal(){
+  if(!_hrPendingId) return;
+  const vals=_hrTimes.map((_,i)=>{
+    const v=parseInt(document.getElementById('hr-val-'+i)?.value||'0');
+    return (v>=40&&v<=230)?v:null;
+  }).filter(v=>v!==null);
+  if(vals.length>0){
+    TRAIN_DATA=loadTrain();
+    if(!TRAIN_DATA[_hrPendingId]) TRAIN_DATA[_hrPendingId]={};
+    TRAIN_DATA[_hrPendingId].hr=vals;
+    TRAIN_DATA[_hrPendingId].hrMax=Math.max(...vals);
+    saveTrain();
+    toast('FC enregistrée — max '+Math.max(...vals)+' bpm ✓');
+  }
+  closeHrModal();
+}
+
 // Recalibrage VMA depuis "Ajouter une course"
 function checkVmaRecalibFromAddRun(km, durationSec){
-  if(!PROG||!km||!durationSec||km<5||durationSec<=0)return;
+  if(!PROG||!km||!durationSec||km<3||durationSec<=0)return;
   const paceMin=(durationSec/60)/km; // min/km
   const speedKmh=60/paceMin;
   // VMA estimée depuis l'allure réelle
