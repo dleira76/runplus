@@ -5572,7 +5572,6 @@ function chronoTick(){
     chronoToggle();
     announce('Séance terminée ! 🎉');
     if(_voiceEnabled)speakStep('Séance terminée. Bravo !');
-    if(_hrEnabled&&_hrTimes.length) setTimeout(()=>openHrModal(TL_SESS.id),1500);
   }
 }
 
@@ -6737,6 +6736,8 @@ function _arCalcPace(){
 
 function openDoneModal(){
   if(!TL_SESS)return;
+  // S'assurer que les temps FC sont planifiés (au cas où chrono pas lancé)
+  if(_hrEnabled && !_hrTimes.length && TL_TOTAL>0) planHrTimes(TL_TOTAL);
   const label=(SESS_LABELS[TL_SESS.type]||TL_SESS.title||'Séance');
   const sessNum=TL_SESS.id?TL_SESS.id.replace('w','S').replace('s','.'):'';
   document.getElementById('doneSessLbl').textContent=(sessNum?sessNum+' - ':'')+label;
@@ -6825,6 +6826,8 @@ function saveDoneModal(){
   updateTrainBadge();
   buildProgressChart(PROG.weeks); if(PROG&&PROG.Z) buildPlanChart(PROG.weeks, PROG.Z);
   document.getElementById('doneOverlay').classList.remove('open');
+  // Proposer saisie FC si switch activé et mesures prévues pour cette séance
+  if(_hrEnabled && _hrTimes.length) setTimeout(()=>openHrModal(TL_SESS.id), 400);
 }
 
 // ── Long-press → données réelles ──
