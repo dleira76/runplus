@@ -1886,7 +1886,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "92";
+const GENERATOR_VERSION = "96";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2738,7 +2738,14 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
                    : 1.03 + phasePos * 0.02; // P3: 103→105%
       const speed = vma * Math.min(pctVma, 1.05);
       const distM = vma < 14 ? 200 : vma < 17 ? 300 : 400;
-      const reps = Math.min(vma < 14 ? 6 + Math.round(index * 4) : vma < 17 ? 8 + Math.round(index * 4) : 10 + Math.round(index * 4), 16);
+      // v96 — cap absolu par phase (Daniels : progressivité — pas de charge maximale en début de cycle)
+      // Phase1 : charge limitée pour construire la tolérance à la vitesse VMA
+      // Phase2 : charge modérée, Phase3 : charge pleine
+      const maxRepsPhase = phase === 'phase1' ? (vma < 14 ? 6 : vma < 17 ? 8 : 10)
+                         : phase === 'phase2' ? (vma < 14 ? 10 : vma < 17 ? 12 : 14)
+                         : 16; // phase3/taper : plein
+      const repsBase1 = vma < 14 ? 6 + Math.round(index * 4) : vma < 17 ? 8 + Math.round(index * 4) : 10 + Math.round(index * 4);
+      const reps = Math.min(repsBase1, maxRepsPhase);
       const effortSec = effortSecFromDist(distM, speed);
       const recupSec = calcRecupSec(effortSec, 'i');
       const pacePer = fmtPace(speed);
@@ -2759,7 +2766,12 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
                    : 1.01 + phasePos * 0.02;
       const speed = vma * pctVma;
       const distM = vma < 14 ? 600 : vma < 17 ? 800 : 1000;
-      const reps = Math.min(vma < 14 ? 4 + Math.round(index * 2) : vma < 17 ? 5 + Math.round(index * 3) : 6 + Math.round(index * 2), 10);
+      // v96 — cap absolu par phase pour I_moyen (Daniels)
+      const maxRepsPhaseM = phase === 'phase1' ? (vma < 14 ? 4 : vma < 17 ? 5 : 6)
+                          : phase === 'phase2' ? (vma < 14 ? 7 : vma < 17 ? 8 : 9)
+                          : 10;
+      const repsBase2 = vma < 14 ? 4 + Math.round(index * 2) : vma < 17 ? 5 + Math.round(index * 3) : 6 + Math.round(index * 2);
+      const reps = Math.min(repsBase2, maxRepsPhaseM);
       const effortSec = effortSecFromDist(distM, speed);
       const recupSec = calcRecupSec(effortSec, 'i');
       const pacePer = fmtPace(speed);
@@ -2840,7 +2852,9 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
     // Progression : début de phase → 15s, milieu → 20s, fin → 25s
     // Littérature : Billat 2001 — côtes neuromusculaires 15-25s, récup complète 2-3x durée effort
     case 'cotes_courtes': {
-      const reps = Math.min(6 + Math.round(index * 6 + phasePos * 4), 14);
+      // v96 — progression initiale phase1 sur côtes courtes aussi
+      const earlyProgC = phase === 'phase1' ? Math.min(1.0, 0.6 + phasePos * 1.2) : 1.0;
+      const reps = Math.min(Math.round((6 + Math.round(index * 6 + phasePos * 4)) * earlyProgC), 14);
       // Durée progressive selon position dans la phase (20s→30s)
       // Minimum 20s : en dessous on travaille surtout la filière ATP-PC, pas le neuromusculaire course
       // Référence : Billat 2001, TimeTo/Gaillard — côtes 20-40s pour semi/marathon
@@ -2849,7 +2863,9 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const effortMin = Math.round(effortSec / 6) / 10;
       const recupMin = Math.round(recupSec / 6) / 10;
       for (let r = 1; r <= reps; r++) {
-        steps.push({ t: 'qual', d: effortMin, txt: `Côte ${r}/${reps} · ${effortSec}s explosive (montée 6-8%) · vitesse maximale` });
+        // v93 — "vitesse maximale" trop agressif en S1 (coach analysis) : allure vive contrôlée
+        const effortLabel = phasePos < 0.2 ? 'allure vive contrôlée' : 'allure explosive';
+        steps.push({ t: 'qual', d: effortMin, txt: `Côte ${r}/${reps} · ${effortSec}s ${effortLabel} (montée 6-8%)` });
         if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup marche retour · ~${recupSec}s` });
       }
       break;
@@ -2930,10 +2946,10 @@ function longRunSteps(Z, durMin, blocsMin, blocsIdx, allureCible) {
     txt: `Départ doux · ${fmtSpeedRange(Z.z1.min,Z.z1.max)} · ${fmtPace(Z.z1.max)}/km` });
 
   if (blocsMin && blocsMin > 0) {
-    // 3 blocs calculés selon position dans programme
-    const maxBlocsMin = Math.floor(durMin * 0.40);
-    const blocDur = Math.max(8, Math.min(Math.floor(maxBlocsMin / 3), 20));
-    const nBlocs = Math.min(3, Math.floor(maxBlocsMin / Math.max(1, blocDur)));
+    // v94 — utiliser blocsMin réel (cappé par buildWeek) au lieu de recalculer depuis durMin*0.40
+    // Pfitzinger : blocs de 15-20min, 2-3 blocs max. blocsMin est déjà cappé à 36min par buildWeek.
+    const nBlocs = blocsMin <= 20 ? 1 : blocsMin <= 36 ? 2 : 3; // 1 bloc si ≤20min, 2 blocs sinon (3 rare)
+    const blocDur = Math.max(8, Math.min(Math.round(blocsMin / nBlocs), 20));
     const recupBetween = Math.max(3, Math.round(blocDur * 0.5));
 
     // Footing entre départ et blocs
@@ -3147,9 +3163,12 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
   // Renforcement : INDÉPENDANT des sessions de course.
   // Les 4 jours = 4 séances de course. Le renfo s'ajoute en dehors, sauf le jour SL.
   // Cap : 1 renfo pour les petites distances, 2 pour semi/marathon (jamais 3).
+  // v93 — fix S13/S14 (coach analysis) : en phase3, si semaine à haute charge (qual + SL > 120min)
+  // → cap à 1 renfo pour éviter la surcharge cumulative (Pfitzinger : ne pas cumuler qual + SL + renfo×2)
   const idealRenfo = dist >= 21 ? 2 : 1;
   const maxRenfoForDays = nSessions <= 2 ? 1 : 2; // jamais plus de 2
-  const minRenfo = Math.min(idealRenfo, maxRenfoForDays);
+  const isHighLoadWeek = false; // recalculé en étape B avec les sessions réelles (v93)
+  const minRenfo = isHighLoadWeek ? 1 : Math.min(idealRenfo, maxRenfoForDays);
   const renfoPerWeek = isTaper ? 1
     : isDecharge ? (dist >= 21 ? 1 : 0)
     : minRenfo;
@@ -3323,10 +3342,15 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
   if (runSessions.length < effectiveSessions - 1) {
     runSessions.push({ type:'footing', title:'Footing doux de récupération', steps: footingSteps(Z, 30) });
   }
-  if (runSessions.length < effectiveSessions - 1) {
+  // v96 — Pfitzinger : max 1 qual/semaine en phase3/taper (intensité concentrée, pas dispersée)
+  const allow2ndQual = phase !== 'phase3' && phase !== 'taper';
+  if (allow2ndQual && runSessions.length < effectiveSessions - 1) {
     const frac2Type = selectFracType(phase, qualIdx + 1, vma, index, dist, nWeeks, phaseConfig, wIdx + 1);
     const frac2Steps = buildFracSession(frac2Type, Z, vma, index, dist, phase, phasePos * 0.8, allureCible);
     runSessions.push({ type: fracTypeToSessionType(frac2Type), title: fracTypeLabel(frac2Type) + ' (2)', steps: frac2Steps });
+  } else if (!allow2ndQual && runSessions.length < effectiveSessions - 1) {
+    // phase3 : remplacer la 2e qual par un footing de récupération
+    runSessions.push({ type:'footing', title:'Footing récupération active', steps: footingSteps(Z, 30) });
   }
   if (runSessions.length < effectiveSessions - 1) {
     runSessions.push({ type:'recup', title:'Récupération active', steps: recupSteps(Z) });
@@ -3342,10 +3366,21 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
     if (phase === 'phase3' && allureCible) {
       // v88 fix#7/#9 — Phase3 avec allureCible : SL avec blocs allure cible systématiquement
       // Pfitzinger: intégrer l'allure marathon dans TOUTES les SL de phase3
-      // Si séance qualitative ce jour : blocs plus courts (15-25% SL max)
+      // v93 — fix S13/S14 (coach analysis) : quand semaine déjà chargée (qual + longMin élevé),
+      // plafonner les blocs allure pour éviter la surcharge (Pfitzinger : alternance, pas cumul)
+      // Si séance qualitative ce jour ET longMin > 120min : cap strict à 10% SL (≈2×15min max)
+      // Si séance qualitative sans sur-charge : blocs courts (12-20% SL)
       // Si pas de qual : blocs plus longs (20-35% SL)
-      const maxBlocsRatio = hasQualSess ? 0.15 + phasePos * 0.10 : 0.20 + phasePos * 0.15;
-      blocsMin = Math.floor(longMin * maxBlocsRatio);
+      let maxBlocsRatio;
+      if (hasQualSess && longMin > 120) {
+        // cap modéré : ~18-20% → ≈26-30min sur 150min SL (analyse : réduire les 60min, pas éliminer)
+        maxBlocsRatio = 0.18 + phasePos * 0.07;
+      } else if (hasQualSess) {
+        maxBlocsRatio = 0.12 + phasePos * 0.08;
+      } else {
+        maxBlocsRatio = 0.20 + phasePos * 0.15;
+      }
+      blocsMin = Math.min(Math.floor(longMin * maxBlocsRatio), 36); // cap absolu 36min (2×18min)
     } else if (phase === 'phase3' && !hasQualSess) {
       // Phase3 sans allureCible : blocs en endurance active (Z2)
       const blocsRatio = 0.20 + phasePos * 0.15;
@@ -3359,8 +3394,15 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
 
   // ── ÉTAPE B : ajouter les renfo APRÈS toutes les courses ─────────────────
   // Ordre final : toutes les sessions de course, puis 1 ou 2 renfo en fin de semaine
+  // v93 — recalcul renfoPerWeek final avec hasQualSess réel (toutes sessions connues ici)
+  // v96 — inclure 'cotes' dans finalHasQual (côtes sont aussi une séance qualitative intensive)
+  const finalHasQual = runSessions.some(s => s.type === 'frac' || s.type === 'specific' || s.type === 'cotes');
+  // v95 — étendre la réduction renfo à phase2 aussi (phase2 fin peut avoir SL > 100min + qual)
+  // v96 — étendre la réduction renfo à toute phase avec SL > 100min + qual (charge excessive quelque soit la phase)
+  const finalHighLoad = longMin > 100 && finalHasQual;
+  const finalRenfoPerWeek = finalHighLoad ? 1 : renfoPerWeek;
   runSessions.forEach(s => sessions.push(s));
-  for (let r = 0; r < renfoPerWeek; r++) {
+  for (let r = 0; r < finalRenfoPerWeek; r++) {
     sessions.push(mkRenfo(false));
   }
   return sessions;
