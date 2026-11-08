@@ -98,19 +98,45 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .plan-header h2{font-size:22px;font-weight:800;line-height:1.15;color:var(--fg)}
 .plan-goal-badge{display:inline-block;background:var(--accent);color:#fff;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:4px 10px;border-radius:6px;margin-bottom:6px}
 .plan-meta{font-size:12px;color:var(--fg-muted);margin-top:4px;line-height:1.6;text-align:left;text-wrap:initial}
-.plan-header-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
-.plan-hdr-group{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.plan-hdr-sep{width:1px;height:28px;background:var(--border);margin:0 2px;flex-shrink:0}
-.btn-hdr-add{background:var(--accent);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .15s}
-.btn-hdr-add:hover{background:#a93226}
-.btn-hdr{background:var(--surface);border:1.5px solid var(--border);color:var(--fg);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:border-color .15s}
-.btn-hdr:hover{border-color:var(--accent);color:var(--accent)}
-.btn-hdr-edit{border-color:#9b7fd4;color:#7c5cbf}
-.btn-hdr-edit:hover{border-color:#7c5cbf;color:#7c5cbf;background:#f3eeff}
-.btn-hdr-offline{border-color:#27ae60;color:#1e8449}
-.btn-hdr-offline:hover{border-color:#1e8449;background:#eafaf1;color:#1e8449}
-.btn-hdr-install{border-color:var(--accent);color:var(--accent)}
-.btn-hdr-install:hover{background:var(--accent);color:#fff}
+/* v97 — plan-header-actions : boutons réorganisés par thème, dimensions et styles unifiés */
+.plan-header-actions{display:flex;gap:0;flex-wrap:wrap;margin-top:10px;align-items:stretch;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:6px 8px;gap:4px}
+.plan-hdr-group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.plan-hdr-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-muted);opacity:.7;padding:0 2px 2px;width:100%;display:block}
+.plan-hdr-sep{width:1px;align-self:stretch;background:var(--border);margin:0 4px;flex-shrink:0}
+/* Bouton de base : tous identiques en taille et rayon */
+.btn-hdr{background:transparent;border:1.5px solid var(--border);color:var(--fg);padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
+.btn-hdr:hover{border-color:var(--fg-muted);background:var(--bg)}
+/* Groupe Programme — violet */
+.btn-hdr-edit{border-color:#b39ddb;color:#7c5cbf}
+.btn-hdr-edit:hover{border-color:#7c5cbf;background:#f3eeff;color:#6a3fb5}
+.btn-hdr-regen{border-color:#b39ddb;color:#7c5cbf}
+.btn-hdr-regen:hover{border-color:#7c5cbf;background:#f3eeff;color:#6a3fb5}
+/* Groupe Fichier — bleu acier */
+.btn-hdr-save{border-color:#90caf9;color:#1565c0}
+.btn-hdr-save:hover{border-color:#1565c0;background:#e3f2fd;color:#1565c0}
+.btn-hdr-load{border-color:#90caf9;color:#1565c0}
+.btn-hdr-load:hover{border-color:#1565c0;background:#e3f2fd;color:#1565c0}
+/* Groupe Affichage — vert forêt */
+.btn-hdr-pace{border-color:#a5d6a7;color:#2e7d32}
+.btn-hdr-pace:hover{border-color:#2e7d32;background:#e8f5e9;color:#1b5e20}
+.btn-hdr-offline{border-color:#a5d6a7;color:#2e7d32}
+.btn-hdr-offline:hover{border-color:#2e7d32;background:#e8f5e9;color:#1b5e20}
+.btn-hdr-install{border-color:#a5d6a7;color:#2e7d32}
+.btn-hdr-install:hover{background:#e8f5e9;color:#1b5e20}
+/* Groupe Actions — boutons pleins, rouge et violet */
+.btn-hdr-add{background:transparent;border:1.5px solid var(--accent);color:var(--accent);padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
+.btn-hdr-add:hover{background:var(--accent);color:#fff}
+.btn-hdr-vma{background:transparent;border:1.5px solid #6b35b0;color:#6b35b0;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
+.btn-hdr-vma:hover{background:#6b35b0;color:#fff}
+/* dark mode overrides */
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .btn-hdr-edit,:root:not([data-theme="light"]) .btn-hdr-regen{border-color:#7c5cbf;color:#c5a8f0}
+  :root:not([data-theme="light"]) .btn-hdr-edit:hover,:root:not([data-theme="light"]) .btn-hdr-regen:hover{background:#2d1f4a;color:#d4beff}
+  :root:not([data-theme="light"]) .btn-hdr-save,:root:not([data-theme="light"]) .btn-hdr-load{border-color:#1565c0;color:#90caf9}
+  :root:not([data-theme="light"]) .btn-hdr-save:hover,:root:not([data-theme="light"]) .btn-hdr-load:hover{background:#0d2a4a;color:#bbdefb}
+  :root:not([data-theme="light"]) .btn-hdr-pace,:root:not([data-theme="light"]) .btn-hdr-offline,:root:not([data-theme="light"]) .btn-hdr-install{border-color:#2e7d32;color:#a5d6a7}
+  :root:not([data-theme="light"]) .btn-hdr-pace:hover,:root:not([data-theme="light"]) .btn-hdr-offline:hover{background:#0d2a10;color:#c8e6c9}
+}
 .btn-help{background:var(--surface);border:1.5px solid var(--border);color:var(--accent);width:32px;height:32px;border-radius:50%;font-size:15px;font-weight:700;font-family:var(--font);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 
 /* Zones bar */
@@ -1016,21 +1042,30 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     <!-- Banners alignés à gauche, hors du flex row -->
     <div id="planBanners" style="display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>
     <div class="plan-header-actions">
+      <!-- Groupe 1 : Programme -->
       <div class="plan-hdr-group">
-        <button class="btn-hdr btn-hdr-edit" onclick="editPlan()" title="Modifier le programme">✏️ Modifier</button>
-        <button class="btn-hdr" onclick="regenPlan()" title="Regénérer le programme en conservant tous les paramètres">🔄 Regénérer</button>
-        <button class="btn-hdr" onclick="saveFile()" title="Sauvegarder le plan en fichier">⬇ Sauvegarder</button>
-        <button class="btn-hdr" onclick="triggerLoad()" title="Charger un plan existant">⬆ Charger</button>
+        <button class="btn-hdr btn-hdr-edit" onclick="editPlan()" title="Modifier les paramètres du programme">✏️ Modifier</button>
+        <button class="btn-hdr btn-hdr-regen" onclick="regenPlan()" title="Regénérer le programme en conservant tous les paramètres">🔄 Regénérer</button>
       </div>
       <div class="plan-hdr-sep"></div>
+      <!-- Groupe 2 : Fichier -->
       <div class="plan-hdr-group">
-        <button class="btn-hdr" id="btn-toggle-pace" onclick="togglePaceUnit()" title="Basculer km/h ↔ min/km">⏱ <span id="hdr-pace-unit">km/h</span></button>
+        <button class="btn-hdr btn-hdr-save" onclick="saveFile()" title="Sauvegarder le plan en fichier .runplan">⬇ Sauvegarder</button>
+        <button class="btn-hdr btn-hdr-load" onclick="triggerLoad()" title="Charger un plan existant">⬆ Charger</button>
+      </div>
+      <div class="plan-hdr-sep"></div>
+      <!-- Groupe 3 : Affichage -->
+      <div class="plan-hdr-group">
+        <button class="btn-hdr btn-hdr-pace" id="btn-toggle-pace" onclick="togglePaceUnit()" title="Basculer km/h ↔ min/km">⏱ <span id="hdr-pace-unit">km/h</span></button>
         <button class="btn-hdr btn-hdr-offline" id="btn-export-offline" onclick="exportOfflineHTML()" title="Exporter une page HTML autonome, lisible sans connexion">📴 Offline</button>
         <button class="btn-hdr btn-hdr-install" id="btn-install-pwa" onclick="installPWA()" style="display:none" title="Installer l'app sur cet appareil">📲 Installer</button>
       </div>
       <div class="plan-hdr-sep"></div>
-      <button class="btn-hdr-add" onclick="openAddRun()" title="Ajouter une course réalisée">+ Course</button>
-      <button class="btn-hdr-add" onclick="openAddVmaTest()" title="Planifier un test VMA" style="background:#6b35b0;margin-left:6px">🧪 Test VMA</button>
+      <!-- Groupe 4 : Actions -->
+      <div class="plan-hdr-group">
+        <button class="btn-hdr-add" onclick="openAddRun()" title="Ajouter une course réalisée">+ Course</button>
+        <button class="btn-hdr-vma" onclick="openAddVmaTest()" title="Lancer ou saisir un test VMA">🧪 Test VMA</button>
+      </div>
     </div>
     <input type="file" id="inp-load-file" accept=".runplan,.json" style="display:none" onchange="loadFile(event)">
   </div>
