@@ -15,7 +15,7 @@ function loadScript(src){ var s=document.createElement('script'); s.src=src; s.a
 window.addEventListener('DOMContentLoaded',function(){
   loadScript('https://code.responsivevoice.org/responsivevoice.js?key=FREE');
   loadScript('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
-  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();_updateHrSwitch();}, 50);
+  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();_updateHrSwitch();_loadHrProfileInputs();}, 50);
 });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -525,6 +525,24 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     <button id="hr-switch" class="tog" onclick="hrToggle()">
       <span class="tog-knob" id="hr-knob"></span>
     </button>
+  </div>
+  <div style="padding:12px 16px 14px;border-top:1px solid var(--border)">
+    <div style="font-size:12px;font-weight:700;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Zones cardiaques</div>
+    <div style="display:flex;gap:10px;align-items:flex-end">
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--fg-muted);margin-bottom:4px">Âge</div>
+        <input id="hr-age" type="number" min="10" max="99" placeholder="ex: 35"
+          style="width:100%;padding:8px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:15px;font-family:var(--mono)"
+          oninput="saveHrProfile()">
+      </div>
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--fg-muted);margin-bottom:4px">FCmax (bpm)</div>
+        <input id="hr-fcmax" type="number" min="100" max="230" placeholder="auto"
+          style="width:100%;padding:8px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:15px;font-family:var(--mono)"
+          oninput="saveHrProfile()">
+      </div>
+      <div id="hr-fcmax-hint" style="font-size:11px;color:var(--fg-muted);padding-bottom:10px;white-space:nowrap"></div>
+    </div>
   </div>
   <div style="padding:12px 16px 16px;border-top:1px solid var(--border)">
     <button class="home-new-btn" style="width:100%;justify-content:center;font-size:14px" onclick="homeNewPlan()">＋ Nouveau programme</button>
@@ -1982,7 +2000,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "103";
+const GENERATOR_VERSION = "104";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -7439,10 +7457,57 @@ function checkHr(elSec){
   }
 }
 
+// ── Zones cardiaques ──────────────────────────────────────────────────────
+function saveHrProfile(){
+  const age=parseInt(document.getElementById('hr-age')?.value||'0');
+  const fcmax=parseInt(document.getElementById('hr-fcmax')?.value||'0');
+  if(age>=10&&age<=99) localStorage.setItem('rp_hr_age',age);
+  else localStorage.removeItem('rp_hr_age');
+  if(fcmax>=100&&fcmax<=230) localStorage.setItem('rp_hr_fcmax',fcmax);
+  else localStorage.removeItem('rp_hr_fcmax');
+  _updateHrFcmaxHint();
+}
+function _updateHrFcmaxHint(){
+  const hint=document.getElementById('hr-fcmax-hint');
+  if(!hint) return;
+  const age=parseInt(localStorage.getItem('rp_hr_age')||'0');
+  const fcmaxStored=parseInt(localStorage.getItem('rp_hr_fcmax')||'0');
+  if(fcmaxStored>=100) hint.textContent='';
+  else if(age>=10) hint.textContent='≈ '+(220-age)+' bpm';
+  else hint.textContent='';
+}
+function getHrMax(){
+  const fcmax=parseInt(localStorage.getItem('rp_hr_fcmax')||'0');
+  if(fcmax>=100) return fcmax;
+  const age=parseInt(localStorage.getItem('rp_hr_age')||'0');
+  if(age>=10) return 220-age;
+  return 0;
+}
+function hrZoneInfo(bpm){
+  const fcmax=getHrMax();
+  if(!fcmax||bpm<40) return null;
+  const pct=bpm/fcmax;
+  if(pct<0.60) return {z:1,name:'Récupération',color:'#64b5f6'};
+  if(pct<0.70) return {z:2,name:'Endurance',color:'#81c784'};
+  if(pct<0.80) return {z:3,name:'Aérobie',color:'#ffb74d'};
+  if(pct<0.90) return {z:4,name:'Seuil',color:'#ef5350'};
+  return {z:5,name:'VO2max',color:'#b71c1c'};
+}
+function _loadHrProfileInputs(){
+  const age=localStorage.getItem('rp_hr_age');
+  const fcmax=localStorage.getItem('rp_hr_fcmax');
+  const ageEl=document.getElementById('hr-age');
+  const fcEl=document.getElementById('hr-fcmax');
+  if(ageEl&&age) ageEl.value=age;
+  if(fcEl&&fcmax) fcEl.value=fcmax;
+  _updateHrFcmaxHint();
+}
+
 function openHrModal(sessId){
   if(!_hrEnabled||!_hrTimes.length) return;
   _hrPendingId=sessId;
   const fmtTime=s=>{const m=Math.floor(s/60),sec=s%60;return m+'\''+String(sec).padStart(2,'0');};
+  const fcmax=getHrMax();
   const html=_hrTimes.map((t,i)=>`
     <div style="margin-bottom:12px">
       <div style="font-size:12px;color:var(--fg-muted);margin-bottom:4px">
@@ -7450,14 +7515,30 @@ function openHrModal(sessId){
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <input id="hr-val-${i}" type="number" min="40" max="230" placeholder="ex: 162"
-          style="width:100px;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:16px;font-family:var(--mono)">
+          style="width:100px;padding:9px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:16px;font-family:var(--mono)"
+          oninput="_updateHrZoneBadge(${i})">
         <span style="font-size:13px;color:var(--fg-muted)">bpm</span>
+        <span id="hr-zone-badge-${i}" style="font-size:12px;font-weight:700;padding:3px 8px;border-radius:20px;display:none"></span>
       </div>
     </div>`).join('');
   document.getElementById('hr-fields').innerHTML=html;
   const ov=document.getElementById('hr-overlay');
   ov.style.display='flex';
   setTimeout(()=>{ov.style.opacity='1';},10);
+}
+function _updateHrZoneBadge(i){
+  const v=parseInt(document.getElementById('hr-val-'+i)?.value||'0');
+  const badge=document.getElementById('hr-zone-badge-'+i);
+  if(!badge) return;
+  const info=hrZoneInfo(v);
+  if(info&&v>=40){
+    badge.style.display='inline-block';
+    badge.style.background=info.color+'22';
+    badge.style.color=info.color;
+    badge.textContent='Z'+info.z+' '+info.name;
+  } else {
+    badge.style.display='none';
+  }
 }
 
 function closeHrModal(){
@@ -7474,10 +7555,15 @@ function saveHrModal(){
   if(vals.length>0){
     TRAIN_DATA=loadTrain();
     if(!TRAIN_DATA[_hrPendingId]) TRAIN_DATA[_hrPendingId]={};
+    const maxBpm=Math.max(...vals);
+    const zones=vals.map(v=>hrZoneInfo(v)).filter(Boolean);
     TRAIN_DATA[_hrPendingId].hr=vals;
-    TRAIN_DATA[_hrPendingId].hrMax=Math.max(...vals);
+    TRAIN_DATA[_hrPendingId].hrMax=maxBpm;
+    if(zones.length) TRAIN_DATA[_hrPendingId].hrZones=zones.map(z=>z.z);
     saveTrain();
-    toast('FC enregistrée — max '+Math.max(...vals)+' bpm ✓');
+    const zoneInfo=hrZoneInfo(maxBpm);
+    const zoneStr=zoneInfo?' — Z'+zoneInfo.z+' '+zoneInfo.name:'';
+    toast('FC enregistrée — max '+maxBpm+' bpm'+zoneStr+' ✓');
   }
   closeHrModal();
 }
