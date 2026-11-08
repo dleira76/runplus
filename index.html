@@ -1440,7 +1440,15 @@ function checkGoalViability(){
   // v71 — VMA depuis objectif ou courses passées, pas footing
   const goalVMAcheck = estimateVMAFromGoal(Q.dist, Q.goalSec);
   const raceVMAval=window._raceVMAval||null;
+  const hasIndependentVma = !!raceVMAval || !!Q.speed;
   const effectiveVma=raceVMAval||goalVMAcheck||estimateVMA(Q.speed||7);
+  // v97 — Avertissement circularité : si la VMA est déduite uniquement de l'objectif
+  // (pas de course passée, pas d'allure de footing), l'évaluation de faisabilité est circulaire
+  if (!hasIndependentVma && goalVMAcheck) {
+    warnEl.className='q-warn show';
+    warnEl.innerHTML=`ℹ️ <strong>Niveau estimé depuis l'objectif uniquement.</strong> Pour valider la faisabilité de ton plan, ajoute une course récente ou ton allure de footing habituelle — sinon le programme est calibré sur ton objectif, pas sur ton niveau actuel.`;
+    // On continue quand même l'évaluation pour afficher d'éventuelles alertes
+  }
   const gspd=goalSpeedKmh(Q.dist,Q.goalSec);
   const ratio=gspd/effectiveVma;
   const maxRatio=viabilityRatio(Q.dist);
@@ -1459,11 +1467,13 @@ Temps réaliste estimé : <strong>${realist}</strong><br>
   Je comprends, je veux quand même générer le plan avec cet objectif
 </label>`;
   } else if(ratio>maxRatio+0.05){
+    const circNote = !hasIndependentVma ? `<br><small>⚠️ Niveau estimé depuis l'objectif — ajoute une course passée pour affiner.</small>` : '';
     warnEl.className='q-warn show';
-    warnEl.innerHTML=`⚠️ Objectif très ambitieux (+${overPct}% VMA). Temps réaliste : <strong>${realist}</strong>. Atteignable avec un entraînement parfait et une progression VMA significative.`;
+    warnEl.innerHTML=`⚠️ Objectif très ambitieux (+${overPct}% VMA). Temps réaliste : <strong>${realist}</strong>. Atteignable avec un entraînement parfait et une progression VMA significative.${circNote}`;
   } else if(ratio>maxRatio){
+    const circNote = !hasIndependentVma ? `<br><small>⚠️ Niveau estimé depuis l'objectif — ajoute une course passée pour affiner.</small>` : '';
     warnEl.className='q-warn show';
-    warnEl.innerHTML=`ℹ️ Objectif exigeant mais atteignable avec un entraînement rigoureux (${(ratio*100).toFixed(0)}% VMA).`;
+    warnEl.innerHTML=`ℹ️ Objectif exigeant mais atteignable avec un entraînement rigoureux (${(ratio*100).toFixed(0)}% VMA).${circNote}`;
   }
 }
 
@@ -1886,7 +1896,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "96";
+const GENERATOR_VERSION = "97";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2993,11 +3003,19 @@ function longRunSteps(Z, durMin, blocsMin, blocsIdx, allureCible) {
 
 // Session race (dernière semaine ou course intermédiaire)
 // dist et raceName optionnels (pour course intermédiaire)
-function raceSteps(Z, allureCible, dist, raceName) {
+function raceSteps(Z, allureCible, dist, raceName, goalSec) {
   const label = raceName ? raceName : 'COURSE';
+  // v97 — durée calculée depuis goalSec réel (fix bug 240min fixe)
+  // Fallback sur valeurs typiques si goalSec absent
+  let raceDurMin;
+  if (goalSec && goalSec > 0) {
+    raceDurMin = Math.round(goalSec / 60);
+  } else {
+    raceDurMin = dist >= 42 ? 240 : dist >= 21 ? 120 : dist >= 10 ? 60 : 30;
+  }
   const steps = [
     { t: 'rest', d: 15, txt: 'Échauffement léger 15min + accélérations' },
-    { t: 'qual', d: dist >= 42 ? 240 : dist >= 21 ? 120 : dist >= 10 ? 60 : 30, txt: label + ' — Bonne chance ! 🏆' },
+    { t: 'qual', d: raceDurMin, txt: label + ' — Bonne chance ! 🏆' },
   ];
   if (allureCible) {
     const pacePer = fmtPace(allureCible);
@@ -3491,7 +3509,7 @@ function generateProgram(){
 
     let sessions;
     if(isLast){
-      sessions=[{type:'race',title:Q.raceName||distName(Q.dist),steps:raceSteps(Z,allureCible,Q.dist,Q.raceName)}];
+      sessions=[{type:'race',title:Q.raceName||distName(Q.dist),steps:raceSteps(Z,allureCible,Q.dist,Q.raceName,gs)}];
     } else if(isPrepRace){
       const s=[];
       if(hasIntermRace){
@@ -3504,7 +3522,7 @@ function generateProgram(){
         // Semaine allégée : footing court + race + récup légère
         if(Q.days>=4) s.push({type:'recup',title:'Récupération active',steps:recupSteps(Z)});
         s.push({type:'footing',title:'Footing léger pré-course',steps:footingSteps(Z,20)});
-        s.push({type:'race',title:irName+' · Course test',steps:raceSteps(Z,irAllure,irDist,irName)});
+        s.push({type:'race',title:irName+' · Course test',steps:raceSteps(Z,irAllure,irDist,irName,irGoalSec)});
         if(Q.days>=4) s.push({type:'recup',title:'Récupération post-course',steps:recupSteps(Z)});
       } else {
         // Semaine course test classique (allure réduite, pas une vraie course)
@@ -6060,14 +6078,27 @@ function vtUpdateUI(){
 }
 
 function vtCannotHold(){
-  // L'utilisateur s'arrête : VMA = vitesse du palier en cours
+  // v97 — seuil de validation : 60s minimum dans le palier (convention Léger-Boucher)
+  // Si arrêt avant 60s dans le palier → VMA = palier précédent
   stopVmaTimer();
-  const vma=_vtCurrentSpeed;
+  const secsInCurrentPalier = VT_DUR - _vtSecsLeft;
+  const VT_MIN_VALID = 60; // secondes min pour valider un palier comme VMA
+  let vma;
+  let warning = null;
+  if (secsInCurrentPalier < VT_MIN_VALID && _vtPalier > 1) {
+    // Palier non tenu suffisamment : on retient le palier précédent
+    vma = vtSpeed(_vtPalier - 1);
+    warning = `Arrêt après ${secsInCurrentPalier}s dans le palier — VMA retenue : palier ${_vtPalier - 1} (${vma.toFixed(1)} km/h)`;
+  } else {
+    vma = _vtCurrentSpeed;
+  }
   document.getElementById('vt-result-vma').textContent=vma.toFixed(1);
   document.getElementById('vmaresult-auto-block').style.display='';
   document.getElementById('vmaresult-manual-block').style.display='none';
   document.getElementById('vmaresult-speed').value=vma.toFixed(1);
-  document.getElementById('vmaresult-err').style.display='none';
+  const errEl=document.getElementById('vmaresult-err');
+  if(warning){ errEl.textContent=warning; errEl.style.display='block'; }
+  else { errEl.style.display='none'; }
   _showVmatestView('result');
   calcVmaFromResult();
 }
