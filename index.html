@@ -5479,22 +5479,51 @@ function renderBar(){
 
 function renderTLList(activeIdx){
   const list=document.getElementById('tlList'); list.innerHTML='';
-  TL_STEPS.forEach((s,i)=>{
-    const row=document.createElement('div');
-    row.className='tl-row'+(i===activeIdx?' tl-active':'');
-    row.id='tlr'+i;
-    row.onclick=()=>seekTo(s.startSec);
-    let lpT=null;
-    row.addEventListener('pointerdown',()=>{lpT=setTimeout(()=>{row.classList.add('lp-active');openTrainModal(i);},500);});
-    row.addEventListener('pointerup',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
-    row.addEventListener('pointercancel',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
-    const dMin=s.d||0;
-    const dLbl=dMin>0?(dMin<1?Math.round(dMin*60)+'s':dMin>=60?Math.floor(dMin/60)+'h'+String(dMin%60).padStart(2,'0'):dMin+' min'):'';
-    const sCls=stepCls(s);
-    row.innerHTML=`<div class="tl-times"><span class="t-start">${fmtSec(s.startSec)}</span>${dLbl?`<br><span style="font-size:10px">${dLbl}</span>`:''}<br>${s.d?fmtSec(s.endSec):''}</div>
-    <div class="tl-dot-col"><div class="tl-dot ${sCls}"></div>${i<TL_STEPS.length-1?`<div class="tl-line ${sCls}"></div>`:''}</div>
-    <div><div class="tl-label">${stepLabel(s)}</div><div class="tl-speed">${stepSpeed(s)}</div></div>`;
-    list.appendChild(row);
+
+  // Construire la liste fusionnée : paliers + marqueurs FC intercalés
+  const items=[]; // {type:'step',idx,s} ou {type:'hr',t,label,num}
+  TL_STEPS.forEach((s,i)=>items.push({type:'step',idx:i,s}));
+  if(_hrEnabled && _hrTimes.length){
+    _hrTimes.forEach((t,i)=>items.push({type:'hr',t,label:_hrLabels[i],num:i+1}));
+  }
+  items.sort((a,b)=>{
+    const tA=a.type==='step'?a.s.startSec:a.t;
+    const tB=b.type==='step'?b.s.startSec:b.t;
+    return tA-tB;
+  });
+
+  items.forEach(item=>{
+    if(item.type==='hr'){
+      // Ligne marqueur FC
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:8px;padding:5px 0 5px 4px;opacity:0.85';
+      row.innerHTML=`
+        <div style="min-width:42px;text-align:right;font-size:10px;color:var(--fg-muted);font-family:var(--mono)">${fmtSec(item.t)}</div>
+        <div style="display:flex;flex-direction:column;align-items:center;width:20px">
+          <div style="width:2px;height:6px;background:var(--border)"></div>
+          <div style="width:14px;height:14px;border-radius:50%;background:#c0392b22;border:2px solid #c0392b;display:flex;align-items:center;justify-content:center;font-size:8px">❤️</div>
+          <div style="width:2px;height:6px;background:var(--border)"></div>
+        </div>
+        <div style="font-size:11.5px;color:#c0392b;font-weight:600">Mesure ${item.num} — ${item.label} · retenez vos pulsations</div>`;
+      list.appendChild(row);
+    } else {
+      const {idx:i,s}=item;
+      const row=document.createElement('div');
+      row.className='tl-row'+(i===activeIdx?' tl-active':'');
+      row.id='tlr'+i;
+      row.onclick=()=>seekTo(s.startSec);
+      let lpT=null;
+      row.addEventListener('pointerdown',()=>{lpT=setTimeout(()=>{row.classList.add('lp-active');openTrainModal(i);},500);});
+      row.addEventListener('pointerup',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
+      row.addEventListener('pointercancel',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
+      const dMin=s.d||0;
+      const dLbl=dMin>0?(dMin<1?Math.round(dMin*60)+'s':dMin>=60?Math.floor(dMin/60)+'h'+String(dMin%60).padStart(2,'0'):dMin+' min'):'';
+      const sCls=stepCls(s);
+      row.innerHTML=`<div class="tl-times"><span class="t-start">${fmtSec(s.startSec)}</span>${dLbl?`<br><span style="font-size:10px">${dLbl}</span>`:''}<br>${s.d?fmtSec(s.endSec):''}</div>
+      <div class="tl-dot-col"><div class="tl-dot ${sCls}"></div>${i<TL_STEPS.length-1?`<div class="tl-line ${sCls}"></div>`:''}</div>
+      <div><div class="tl-label">${stepLabel(s)}</div><div class="tl-speed">${stepSpeed(s)}</div></div>`;
+      list.appendChild(row);
+    }
   });
 }
 
