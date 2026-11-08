@@ -15,7 +15,7 @@ function loadScript(src){ var s=document.createElement('script'); s.src=src; s.a
 window.addEventListener('DOMContentLoaded',function(){
   loadScript('https://code.responsivevoice.org/responsivevoice.js?key=FREE');
   loadScript('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
-  setTimeout(_updateEncourageSwitch, 50);
+  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();}, 50);
 });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -129,11 +129,13 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .btn-hdr-add:hover{background:var(--accent);color:#fff}
 .btn-hdr-vma{background:transparent;border:1.5px solid #6b35b0;color:#6b35b0;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
 .btn-hdr-vma:hover{background:#6b35b0;color:#fff}
-/* Switch encouragements */
-#encourage-switch{background:var(--border)}
-#encourage-switch.on{background:#2e7d32}
-#encourage-switch.on #encourage-knob{transform:translateX(20px)}
-#encourage-switch-lbl{transition:color .2s}
+/* Switches home */
+.home-switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid var(--border)}
+.home-switch-label{font-size:13px;color:var(--fg-muted)}
+.home-switch-sublbl{font-size:12px;color:var(--fg-muted);font-weight:600}
+.tog{position:relative;width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;background:var(--border);transition:background .2s;flex-shrink:0;padding:0}
+.tog.on{background:#1565c0}
+.tog-knob{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;display:block;pointer-events:none}
 /* dark mode overrides */
 @media(prefers-color-scheme:dark){
   :root:not([data-theme="light"]) .btn-hdr-edit,:root:not([data-theme="light"]) .btn-hdr-regen{border-color:#7c5cbf;color:#c5a8f0}
@@ -497,19 +499,29 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     <span class="home-version" id="home-version-label"></span>
   </div>
   <div id="home-content"></div>
-  <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
+  <div class="home-switch-row">
     <div style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:13px;color:var(--fg-muted)">💬 Encouragements</span>
-      <span id="encourage-switch-lbl" style="font-size:12px;color:var(--fg-muted);font-weight:600"></span>
+      <span class="home-switch-label">💬 Encouragements</span>
+      <span id="encourage-switch-lbl" class="home-switch-sublbl"></span>
     </div>
-    <button id="encourage-switch" onclick="encourageToggle()" style="position:relative;width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;background:var(--border);transition:background .2s;flex-shrink:0;padding:0">
-      <span style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;display:block;pointer-events:none" id="encourage-knob"></span>
+    <button id="encourage-switch" class="tog" onclick="encourageToggle()">
+      <span class="tog-knob" id="encourage-knob"></span>
+    </button>
+  </div>
+  <div class="home-switch-row">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="home-switch-label">📍 GPS live</span>
+      <span id="gps-switch-lbl" class="home-switch-sublbl"></span>
+    </div>
+    <button id="gps-switch" class="tog" onclick="gpsToggle()">
+      <span class="tog-knob" id="gps-knob"></span>
     </button>
   </div>
   <div style="padding:12px 16px 16px;border-top:1px solid var(--border)">
     <button class="home-new-btn" style="width:100%;justify-content:center;font-size:14px" onclick="homeNewPlan()">＋ Nouveau programme</button>
   </div>
 </div>
+
 
 <!-- ══ ÉCRAN 1 : QUESTIONNAIRE ═══════════════════════════════════════════ -->
 <div class="screen" id="screen-q">
@@ -1946,7 +1958,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "99";
+const GENERATOR_VERSION = "101";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5141,7 +5153,81 @@ function _updateEncourageSwitch(){
   const lbl=document.getElementById('encourage-switch-lbl');
   if(!sw)return;
   sw.classList.toggle('on',_encourageEnabled);
+  const knob=document.getElementById('encourage-knob');
+  if(knob) knob.style.transform=_encourageEnabled?'translateX(20px)':'';
   if(lbl) lbl.textContent=_encourageEnabled?'Activés':'Désactivés';
+}
+
+// =======================================================================
+// GPS LIVE
+// =======================================================================
+let _gpsEnabled = (localStorage.getItem('rp_gps')==='true');
+let _gpsWatchId = null;
+let _gpsSpeed = null;         // vitesse actuelle en km/h (null = pas de fix)
+let _gpsLastAlert = -Infinity; // timestamp dernière alerte vocale
+const GPS_TOLERANCE = 0.3;    // ±0.3 km/h
+const GPS_ALERT_COOLDOWN = 45; // secondes minimum entre deux alertes
+
+function gpsToggle(){
+  _gpsEnabled=!_gpsEnabled;
+  localStorage.setItem('rp_gps',_gpsEnabled?'true':'false');
+  _updateGpsSwitch();
+  if(!_gpsEnabled) _gpsStop();
+}
+function _updateGpsSwitch(){
+  const sw=document.getElementById('gps-switch');
+  const lbl=document.getElementById('gps-switch-lbl');
+  if(!sw)return;
+  sw.classList.toggle('on',_gpsEnabled);
+  const knob=document.getElementById('gps-knob');
+  if(knob) knob.style.transform=_gpsEnabled?'translateX(20px)':'';
+  if(lbl) lbl.textContent=_gpsEnabled?'Activé':'Désactivé';
+}
+
+function _gpsStart(){
+  if(!_gpsEnabled||_gpsWatchId!==null)return;
+  if(!navigator.geolocation){toast('GPS non disponible sur cet appareil');return;}
+  _gpsWatchId=navigator.geolocation.watchPosition(
+    pos=>{
+      // vitesse en m/s → km/h
+      const spd=pos.coords.speed;
+      _gpsSpeed=(spd!=null&&spd>=0)?spd*3.6:null;
+      _gpsCheckAlert();
+    },
+    err=>{_gpsSpeed=null;},
+    {enableHighAccuracy:true,maximumAge:1000,timeout:5000}
+  );
+}
+function _gpsStop(){
+  if(_gpsWatchId!==null){navigator.geolocation.clearWatch(_gpsWatchId);_gpsWatchId=null;}
+  _gpsSpeed=null;
+}
+
+// Extrait la vitesse cible (km/h) de l'étape en cours
+function _gpsTargetSpeed(){
+  if(_curStep<0||!TL_STEPS[_curStep])return null;
+  const s=TL_STEPS[_curStep];
+  // Prend la vitesse centrale : si plage "X - Y km/h", prend la moyenne
+  const raw=s.s||s.speed||'';
+  const m=raw.match(/([\d.]+)(?:\s*[-–]\s*([\d.]+))?\s*km\/h/);
+  if(!m)return null;
+  return m[2]?(parseFloat(m[1])+parseFloat(m[2]))/2:parseFloat(m[1]);
+}
+
+function _gpsCheckAlert(){
+  if(!_gpsEnabled||!_running||_gpsSpeed===null)return;
+  const target=_gpsTargetSpeed();
+  if(!target)return; // étape sans vitesse cible (repos, échauffement libre…)
+  const now=Date.now()/1000;
+  if(now-_gpsLastAlert<GPS_ALERT_COOLDOWN)return;
+  const diff=_gpsSpeed-target;
+  if(Math.abs(diff)<=GPS_TOLERANCE)return; // dans la cible
+  _gpsLastAlert=now;
+  const spokenSpeed=fmtSpeedVoice(_gpsSpeed);
+  const msg=diff<0
+    ?`Trop lent, tu es à ${spokenSpeed}`
+    :`Trop rapide, tu es à ${spokenSpeed}`;
+  speakStep(msg);
 }
 
 // Planifie les timestamps (en secondes dans la séance) pour les messages
@@ -5389,7 +5475,7 @@ function renderTLList(activeIdx){
 function chronoToggle(){
   if(_running){
     _elapsed+=Date.now()-_startWall; clearInterval(_ival); _running=false;
-    stopSilent();
+    stopSilent(); _gpsStop();
     document.getElementById('tlBtnPlay').textContent='▶ Reprendre';
     document.getElementById('tlBtnPlay').classList.remove('play');
     document.getElementById('tlChrono').classList.remove('running');
@@ -5402,11 +5488,13 @@ function chronoToggle(){
     startSilent(); getAC();
     if(_voiceEnabled){beep(880,0.12,0.5);if(TL_STEPS[0])speakStep(voiceTextRenfo(TL_STEPS[0]));}
     _announced=0; chronoTick();
+    _gpsStart();
   }
 }
 
 function chronoReset(){
   clearInterval(_ival); _running=false; _elapsed=0; _startWall=null; _curStep=-1; _announced=-1; _encourageLastFired=-1;
+  _gpsStop(); _gpsLastAlert=-Infinity;
   document.getElementById('tlBtnPlay').textContent='▶ Démarrer';
   document.getElementById('tlBtnPlay').classList.remove('play');
   document.getElementById('tlChrono').textContent='00:00:00';
@@ -6051,6 +6139,18 @@ function saveAddRun(){
   closeAddRun();
   renderPlan(PROG);
   toast('Course ajoutée ✓');
+
+  // Proposer recalibrage VMA si distance ≥ 5 km et durée connue
+  if(km>=5 && durationSec>0){
+    checkVmaRecalibFromAddRun(km, durationSec);
+  } else if(km>=5 && pace){
+    // Calculer durée depuis l'allure si pas de durée directe
+    const paceMin=paceToMin(pace);
+    if(paceMin>0){
+      const durFromPace=Math.round(paceMin*km*60);
+      checkVmaRecalibFromAddRun(km, durFromPace);
+    }
+  }
 }
 
 // ── Test VMA guidé ──────────────────────────────────────────────────────
@@ -7196,6 +7296,18 @@ if('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', e => {
     if(e.data && e.data.type === 'SW_UPDATED') window.location.reload();
   });
+}
+
+// Recalibrage VMA depuis "Ajouter une course"
+function checkVmaRecalibFromAddRun(km, durationSec){
+  if(!PROG||!km||!durationSec||km<5||durationSec<=0)return;
+  const paceMin=(durationSec/60)/km; // min/km
+  const speedKmh=60/paceMin;
+  // VMA estimée depuis l'allure réelle
+  const newVma=estimateVmaFromPace(paceMin);
+  const oldVma=PROG.vma||0;
+  if(!oldVma||Math.abs(newVma-oldVma)<0.3)return;
+  setTimeout(()=>openRecalibModal(newVma,'allure',paceMin), 500);
 }
 </script>
 </body>
