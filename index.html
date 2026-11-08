@@ -874,7 +874,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 
         <!-- Boutons selon équipement -->
         <div id="vmatest-btn-tapis" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-          <button class="btn-primary" onclick="startVmaTimerNow()" style="background:#1e6b3a">▶ Lancer le test maintenant (avec timer)</button>
+          <button class="btn-primary" onclick="saveAndOpenVmaTest()" style="background:#1e6b3a">▶ Lancer le test maintenant (avec timer)</button>
           <button onclick="saveVmaTest()" style="padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg);font-size:14px;cursor:pointer;font-weight:600">📅 Planifier pour plus tard</button>
         </div>
         <div id="vmatest-btn-vameval" style="display:none">
@@ -1931,7 +1931,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "97";
+const GENERATOR_VERSION = "98";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -6172,6 +6172,30 @@ function saveVmaTest(){
   closeVmaTestModal();
   renderPlan(PROG);
   toast('Test VMA planifié en S'+wkNum+' ✓');
+}
+
+function saveAndOpenVmaTest(){
+  const date=document.getElementById('vmatest-date').value;
+  const wkNum=parseInt(document.getElementById('vmatest-week').value);
+  const proto=document.querySelector('input[name="vmatest-proto"]:checked')?.value||'vameval';
+  const errEl=document.getElementById('vmatest-err');
+  if(!date){errEl.textContent='Veuillez choisir une date.';errEl.style.display='block';return;}
+  if(!wkNum){errEl.textContent='Veuillez choisir une semaine.';errEl.style.display='block';return;}
+  errEl.style.display='none';
+  // Créer la séance test
+  const testId='vmatest_'+Date.now();
+  const testSess={id:testId,type:'vma_test',proto,date,title:'Test VMA'};
+  // Insérer dans la semaine choisie
+  const wk=PROG.weeks.find(w=>w.num===wkNum);
+  if(!wk){errEl.textContent='Semaine introuvable.';errEl.style.display='block';return;}
+  wk.sessions.unshift(testSess);
+  PROG.vmaTests=PROG.vmaTests||[];
+  PROG.vmaTests.push({id:testId,date,proto,weekNum:wkNum});
+  saveProg(PROG);
+  closeVmaTestModal();
+  renderPlan(PROG);
+  // Ouvrir directement la vue séance (Timeline) avec paliers et bouton stop
+  setTimeout(()=>openTL(testId),100);
 }
 
 function deleteVmaTest(sessId){
