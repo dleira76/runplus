@@ -1064,7 +1064,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <!-- Groupe 4 : Actions -->
       <div class="plan-hdr-group">
         <button class="btn-hdr-add" onclick="openAddRun()" title="Ajouter une course réalisée">+ Course</button>
-        <button class="btn-hdr-vma" onclick="openAddVmaTest()" title="Lancer ou saisir un test VMA">🧪 Test VMA</button>
+        <button class="btn-hdr-vma" onclick="openAddVmaTest()" title="Planifier ou lancer un test VMA">🧪 Test VMA</button>
       </div>
     </div>
     <input type="file" id="inp-load-file" accept=".runplan,.json" style="display:none" onchange="loadFile(event)">
@@ -5997,6 +5997,7 @@ function openAddVmaTest(){
   sheet.style.transform='translateY(0)';
   document.body.style.overflow='hidden';
 }
+
 
 function _showVmatestView(v){
   ['plan','timer','result'].forEach(n=>{
