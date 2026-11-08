@@ -1982,7 +1982,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "102";
+const GENERATOR_VERSION = "103";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4289,17 +4289,34 @@ function renderPlan(prog){
 
 function autoOpenNextSess(weeks){
   // Trouver la première séance sans DONE[sess.id]
-  let targetSessId=null, targetWkNum=null;
+  let targetSessId=null, targetWkNum=null, targetWk=null;
   outer: for(const wk of weeks){
     for(const sess of (wk.sessions||[])){
       if(!DONE[sess.id]&&!TRAIN_DATA[sess.id+'__done']){
         targetSessId=sess.id;
         targetWkNum=wk.num;
+        targetWk=wk;
         break outer;
       }
     }
   }
   if(!targetSessId) return; // tout terminé
+
+  // Si la semaine de la prochaine séance est dans le passé → ouvrir la semaine en cours à la place
+  const today=new Date(); today.setHours(0,0,0,0);
+  if(targetWk && targetWk.dateEnd){
+    const wkEnd=new Date(targetWk.dateEnd);
+    if(wkEnd < today){
+      // Chercher la semaine en cours (dateStart <= today <= dateEnd)
+      const currentWk=weeks.find(wk=>wk.dateStart&&wk.dateEnd&&new Date(wk.dateStart)<=today&&new Date(wk.dateEnd)>=today);
+      if(currentWk){
+        targetWkNum=currentWk.num;
+        // Chercher la première séance non faite dans cette semaine, sinon garder l'originale
+        const nextInCurrent=(currentWk.sessions||[]).find(s=>!DONE[s.id]&&!TRAIN_DATA[s.id+'__done']);
+        if(nextInCurrent) targetSessId=nextInCurrent.id;
+      }
+    }
+  }
 
   // Ouvrir la semaine parente
   const wcard=document.getElementById('wcard'+targetWkNum);
