@@ -2000,7 +2000,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "104";
+const GENERATOR_VERSION = "105";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3565,11 +3565,11 @@ function generateProgram(){
     else if(_p.length===2) gs=(+_p[0])*3600+(+_p[1])*60;
   }
 
-  // VMA — priorité : 1) courses passées saisies  2) objectif course  3) footing déclaré
+  // VMA — priorité : 0) override recalibrage  1) courses passées saisies  2) objectif course  3) footing déclaré
   // v71 : partir de l'objectif est plus fiable que le footing (Daniels : marathon ≈ 76% VMA)
   const raceVMAval = Q.raceEvents && Q.raceEvents.length > 0 ? bestRaceVMA(Q.raceEvents) : null;
   const goalVMA = !raceVMAval && gs > 0 && Q.dist ? estimateVMAFromGoal(Q.dist, gs) : null;
-  const vma = raceVMAval || goalVMA || estimateVMA(Q.speed);
+  const vma = Q._vmaOverride || raceVMAval || goalVMA || estimateVMA(Q.speed);
   const index = calcIndex(vma);
   const Z = calcZonesV2(vma, gs>0 ? goalSpeedKmh(Q.dist, gs) : null, Q.dist);
   const allureCible = gs>0 ? goalSpeedKmh(Q.dist, gs) : null;
@@ -6108,18 +6108,53 @@ function applyRecalib(){
   if(!PROG || !_recalibNewVma) return;
   const oldVma = PROG.vma;
   const newVma = _recalibNewVma;
-  PROG.vma = newVma;
-  PROG.Z = {
-    z1:{min:+(newVma*0.60).toFixed(1),max:+(newVma*0.72).toFixed(1),label:'Z1 - Endurance fondamentale'},
-    z2:{min:+(newVma*0.72).toFixed(1),max:+(newVma*0.82).toFixed(1),label:'Z2 - Endurance longue'},
-    z3:{min:+(newVma*0.82).toFixed(1),max:+(newVma*0.92).toFixed(1),label:'Z3 - Seuil / Tempo'},
-    z4:{min:+(newVma*0.95).toFixed(1),max:+(newVma*1.00).toFixed(1),label:'Z4 - VMA (intervalles)'},
-  };
-  delete PROG.vmaSuspect;
-  saveProg(PROG);
+
+  // Compter les séances futures (non faites) qui vont être mises à jour
+  let futureSessCount = 0;
+  (PROG.weeks||[]).forEach(wk=>{
+    (wk.sessions||[]).forEach(s=>{
+      if(!DONE[s.id] && !TRAIN_DATA[s.id+'__done']) futureSessCount++;
+    });
+  });
+
+  // Restaurer Q depuis PROG avec la nouvelle VMA injectée
+  const p = PROG;
+  Q.dist=p.dist; Q.profil=p.profil; Q.speed=p.speed;
+  Q.goalSec=p.goalSec; Q.goalTime=p.goalTime||fmtSec(p.goalSec||0);
+  Q.volume=p.volume; Q.days=p.days;
+  Q.raceDate=p.raceDate; Q.raceName=p.raceName;
+  Q.startDate=p.startDate||null;
+  Q.cotes=p.cotes||'non'; Q.injury=p.injury||0;
+  Q.raceEvents=Array.isArray(p.raceEvents)?p.raceEvents.filter(e=>!e._synthetic):[];
+  Q.intermediateRace=p.intermediateRace||null;
+  Q._goalConfirmed=true;
+  Q._vmaOverride=newVma; // flag temporaire pour forcer la VMA dans generateProgram
+
+  const newProg = generateProgram();
+  delete Q._vmaOverride;
+  newProg.vmaOverride = newVma; // flag traçabilité
+  delete newProg.vmaSuspect;
+
+  PROG = newProg;
+  saveProg(newProg);
+  // Mettre à jour la librairie en conservant done/train/history
+  (function(){
+    var lib = loadLibrary();
+    var activeId = getActiveId();
+    if(activeId){
+      var idx = lib.findIndex(function(e){ return e.id === activeId; });
+      if(idx >= 0){ lib[idx].prog = newProg; saveLibrary(lib); return; }
+    }
+    var newId = 'prog_' + Date.now();
+    lib.unshift({ id: newId, prog: newProg, done: DONE||{}, train: TRAIN_DATA||{}, history: [] });
+    saveLibrary(lib);
+    setActiveId(newId);
+  })();
+  Q._goalConfirmed=false;
+
   closeRecalibModal();
   renderPlan(PROG);
-  toast(`Programme recalibré : VMA ${oldVma} → ${newVma} km/h · Zones mises à jour ✓`);
+  toast(`Programme recalibré : VMA ${oldVma} → ${newVma} km/h · ${futureSessCount} séance${futureSessCount>1?'s':''} mises à jour ✓`);
 }
 
 // Logique moteur : ajustements après feedback
