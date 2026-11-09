@@ -2037,7 +2037,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "106";
+const GENERATOR_VERSION = "107";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -6151,6 +6151,34 @@ function closeRecalibModal(){
   _recalibNewVma = null;
 }
 
+// Réinjecte les séances type vma_test depuis l'ancien plan dans le nouveau (après generateProgram)
+// car generateProgram() ne les crée pas — elles ont des IDs dynamiques créés à la planification
+function _reinjectVmaTestSessions(oldProg, newProg, updatedTestId, resultVma){
+  for(const oldWk of (oldProg.weeks||[])){
+    const vmaSessions=(oldWk.sessions||[]).filter(s=>s.type==='vma_test');
+    if(!vmaSessions.length) continue;
+    const newWk=newProg.weeks.find(w=>w.num===oldWk.num);
+    if(!newWk) continue;
+    const existingIds=new Set((newWk.sessions||[]).map(s=>s.id));
+    for(const s of vmaSessions){
+      if(existingIds.has(s.id)) continue;
+      const toInsert=(updatedTestId&&s.id===updatedTestId)?{...s,resultVma}:s;
+      newWk.sessions.unshift(toInsert);
+    }
+  }
+  // Réinjecter aussi vmaTests metadata
+  if(oldProg.vmaTests&&oldProg.vmaTests.length){
+    newProg.vmaTests=newProg.vmaTests||[];
+    const existingTestIds=new Set((newProg.vmaTests||[]).map(t=>t.id));
+    for(const t of oldProg.vmaTests){
+      if(!existingTestIds.has(t.id)){
+        const toInsert=(updatedTestId&&t.id===updatedTestId)?{...t,resultVma}:t;
+        newProg.vmaTests.push(toInsert);
+      }
+    }
+  }
+}
+
 function applyRecalib(){
   if(!PROG || !_recalibNewVma) return;
   const oldVma = PROG.vma;
@@ -6181,6 +6209,7 @@ function applyRecalib(){
   delete Q._vmaOverride;
   newProg.vmaOverride = newVma; // flag traçabilité
   delete newProg.vmaSuspect;
+  _reinjectVmaTestSessions(p, newProg, null, null);
 
   PROG = newProg;
   saveProg(newProg);
@@ -6691,9 +6720,7 @@ function applyVmaResult(){
     if(!DONE[s.id]&&!TRAIN_DATA[s.id+'__done']) futureSessCount++;
   }));
 
-  // Sauvegarder les métadonnées du test avant régénération
   const testId=_currentVmaTestId;
-  const savedVmaTests=(PROG.vmaTests||[]).map(t=>t.id===testId?{...t,resultVma:newVma}:t);
 
   // Régénérer le programme complet avec la nouvelle VMA (même logique que applyRecalib)
   const p=PROG;
@@ -6712,13 +6739,8 @@ function applyVmaResult(){
   delete Q._vmaOverride;
   Q._goalConfirmed=false;
 
-  // Réinjecter les métadonnées test VMA
-  newProg.vmaTests=savedVmaTests;
-  // Marquer le résultat sur la séance test si elle existe dans le nouveau plan
-  for(const wk of newProg.weeks){
-    const s=wk.sessions.find(s=>s.id===testId);
-    if(s){ s.resultVma=newVma; break; }
-  }
+  // Réinjecter les séances VMA test (IDs dynamiques, non générés par generateProgram)
+  _reinjectVmaTestSessions(p, newProg, testId, newVma);
   newProg.vmaOverride=newVma;
 
   PROG=newProg;
