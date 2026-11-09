@@ -2037,7 +2037,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "107";
+const GENERATOR_VERSION = "108";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4357,18 +4357,25 @@ function autoOpenNextSess(weeks){
   }
   if(!targetSessId) return; // tout terminé
 
-  // Si la semaine de la prochaine séance est dans le passé → ouvrir la semaine en cours à la place
-  const today=new Date(); today.setHours(0,0,0,0);
-  if(targetWk && targetWk.dateEnd){
-    const wkEnd=new Date(targetWk.dateEnd);
-    if(wkEnd < today){
-      // Chercher la semaine en cours (dateStart <= today <= dateEnd)
-      const currentWk=weeks.find(wk=>wk.dateStart&&wk.dateEnd&&new Date(wk.dateStart)<=today&&new Date(wk.dateEnd)>=today);
-      if(currentWk){
-        targetWkNum=currentWk.num;
-        // Chercher la première séance non faite dans cette semaine, sinon garder l'originale
-        const nextInCurrent=(currentWk.sessions||[]).find(s=>!DONE[s.id]&&!TRAIN_DATA[s.id+'__done']);
-        if(nextInCurrent) targetSessId=nextInCurrent.id;
+  // Comparaison de dates ISO sans timezone : "2026-11-09" >= "2026-11-09" (string compare)
+  // Évite le bug UTC±offset où new Date("2026-11-09") = UTC minuit ≠ local minuit
+  const todayISO=new Date().toLocaleDateString('sv'); // "YYYY-MM-DD" heure locale
+
+  // Si la semaine de la prochaine séance est déjà dans le passé → ouvrir la semaine en cours
+  if(targetWk && targetWk.dateEnd && targetWk.dateEnd < todayISO){
+    // Chercher la semaine en cours (dateStart <= today <= dateEnd) — comparaison ISO string
+    const currentWk=weeks.find(wk=>wk.dateStart&&wk.dateEnd&&wk.dateStart<=todayISO&&wk.dateEnd>=todayISO);
+    if(currentWk){
+      targetWkNum=currentWk.num;
+      const nextInCurrent=(currentWk.sessions||[]).find(s=>!DONE[s.id]&&!TRAIN_DATA[s.id+'__done']);
+      if(nextInCurrent) targetSessId=nextInCurrent.id;
+    } else {
+      // Pas de semaine en cours (trou dans le programme) → prendre la semaine suivante la plus proche
+      const nextWk=weeks.find(wk=>wk.dateStart&&wk.dateStart>todayISO);
+      if(nextWk){
+        targetWkNum=nextWk.num;
+        const nextInWk=(nextWk.sessions||[]).find(s=>!DONE[s.id]&&!TRAIN_DATA[s.id+'__done']);
+        if(nextInWk) targetSessId=nextInWk.id;
       }
     }
   }
