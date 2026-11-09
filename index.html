@@ -16,6 +16,25 @@ window.addEventListener('DOMContentLoaded',function(){
   loadScript('https://code.responsivevoice.org/responsivevoice.js?key=FREE');
   loadScript('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
   setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();_updateHrSwitch();_loadHrProfileInputs();}, 50);
+  // Restaurer un résultat de test VMA non appliqué (app fermée avant confirmation)
+  setTimeout(()=>{
+    try{
+      const pending=JSON.parse(localStorage.getItem('rp_vma_pending')||'null');
+      if(pending&&pending.sessId&&pending.speed&&PROG){
+        // Vérifier que la séance existe encore et n'a pas déjà un résultat
+        let sessExists=false;
+        for(const wk of PROG.weeks||[]){
+          const s=(wk.sessions||[]).find(s=>s.id===pending.sessId);
+          if(s&&!s.resultVma){sessExists=true;break;}
+        }
+        if(sessExists){
+          toast(`💡 Résultat de test VMA non enregistré (${pending.speed} km/h) — <button onclick="openVmaResultModal('${pending.sessId}')" style="background:none;border:none;color:#6b35b0;font-weight:700;cursor:pointer;text-decoration:underline">Appliquer</button>`,6000);
+        } else {
+          localStorage.removeItem('rp_vma_pending');
+        }
+      }
+    }catch(e){}
+  }, 800);
 });
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -989,10 +1008,28 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <div style="padding:0 20px 24px">
         <div id="vmaresult-auto-block" style="display:none">
           <!-- affiché quand le timer a capturé la VMA automatiquement -->
-          <div style="text-align:center;margin:16px 0">
+          <div style="text-align:center;margin:16px 0 10px">
             <div style="font-size:13px;color:var(--fg-muted);margin-bottom:4px">VMA mesurée</div>
             <div id="vt-result-vma" style="font-size:56px;font-weight:900;color:#1e6b3a;line-height:1">—</div>
             <div style="font-size:14px;color:var(--fg-muted)">km/h</div>
+          </div>
+          <!-- Correction durée palier (si l'utilisateur a arrêté trop tôt/tard) -->
+          <div id="vmaresult-dur-block" style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:4px">
+            <div style="font-size:12px;color:var(--fg-muted);margin-bottom:8px">⏱ Durée réelle dans ce palier — corrigez si vous avez appuyé trop tôt ou trop tard</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="flex:1">
+                <label style="font-size:12px;color:var(--fg-muted);display:block;margin-bottom:4px">Minutes</label>
+                <input type="number" id="vmaresult-dur-min" class="q-input" min="0" max="4" step="1" placeholder="ex: 2" oninput="recalcVmaFromDur()">
+              </div>
+              <div style="flex:1">
+                <label style="font-size:12px;color:var(--fg-muted);display:block;margin-bottom:4px">Secondes</label>
+                <input type="number" id="vmaresult-dur-sec" class="q-input" min="0" max="59" step="1" placeholder="ex: 45" oninput="recalcVmaFromDur()">
+              </div>
+              <div style="flex:0 0 auto;padding-top:18px">
+                <button onclick="recalcVmaFromDur()" style="padding:10px 14px;border-radius:8px;border:none;background:var(--accent-soft);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer">Recalc.</button>
+              </div>
+            </div>
+            <div id="vmaresult-dur-hint" style="font-size:12px;color:var(--fg-muted);margin-top:6px"></div>
           </div>
         </div>
 
@@ -2000,7 +2037,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "105";
+const GENERATOR_VERSION = "106";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5656,10 +5693,20 @@ function vmaStopFromTL(){
   closeTL();
   // Ouvrir la modal résultat avec la vitesse détectée pré-remplie
   document.getElementById('vmaresult-auto-block').style.display=detectedSpeed?'':'none';
-  document.getElementById('vmaresult-manual-block').style.display='';
+  document.getElementById('vmaresult-manual-block').style.display=detectedSpeed?'none':'';
   if(detectedSpeed){
     document.getElementById('vt-result-vma').textContent=detectedSpeed.toFixed(1);
     document.getElementById('vmaresult-speed').value=detectedSpeed.toFixed(1);
+    // Pré-remplir les champs durée avec le temps écoulé dans ce palier
+    // (depuis la timeline on n'a pas le timer VMA, on affiche champs vides pour saisie manuelle)
+    const durMinEl=document.getElementById('vmaresult-dur-min');
+    const durSecEl=document.getElementById('vmaresult-dur-sec');
+    const durHintEl=document.getElementById('vmaresult-dur-hint');
+    if(durMinEl) durMinEl.value='';
+    if(durSecEl) durSecEl.value='';
+    if(durHintEl) durHintEl.textContent='Ajustez si votre arrêt ne correspond pas exactement au début du palier';
+    // Sauvegarder immédiatement le résultat brut pour ne pas le perdre si l'app se ferme
+    try{ localStorage.setItem('rp_vma_pending', JSON.stringify({sessId:_currentVmaTestId, speed:detectedSpeed})); }catch(e){}
     calcVmaFromResult();
   } else {
     document.getElementById('vmaresult-speed').value='';
@@ -6288,11 +6335,12 @@ function saveAddRun(){
 // Protocole Léger & Boucher : départ 8 km/h, +1 km/h toutes les 2 min
 const VT_START = 8;       // km/h
 const VT_STEP  = 1;       // km/h par palier
-const VT_DUR   = 180;     // secondes par palier (protocole Machado 2022 : 3 min)
+const VT_DUR   = 180;     // secondes par palier par défaut (protocole Machado 2022 : 3 min)
+let   _vtDur   = VT_DUR;  // durée effective courante (peut être corrigée après le test)
 
 let _vtInterval  = null;
 let _vtPaused    = false;
-let _vtSecsLeft  = VT_DUR;
+let _vtSecsLeft  = _vtDur;
 let _vtTotalSecs = 0;
 let _vtPalier    = 1;      // palier actuel (1 = 8 km/h)
 let _vtCurrentSpeed = VT_START;
@@ -6374,7 +6422,7 @@ function startVmaTimerNow(){
   saveProg(PROG);
 
   // Init timer
-  _vtPalier=1; _vtSecsLeft=VT_DUR; _vtTotalSecs=0; _vtPaused=false;
+  _vtDur=VT_DUR; _vtPalier=1; _vtSecsLeft=_vtDur; _vtTotalSecs=0; _vtPaused=false;
   _vtCurrentSpeed=vtSpeed(1);
   vtUpdateUI();
   _showVmatestView('timer');
@@ -6389,7 +6437,7 @@ function vtTick(){
     // Palier suivant
     _vtPalier++;
     _vtCurrentSpeed=vtSpeed(_vtPalier);
-    _vtSecsLeft=VT_DUR;
+    _vtSecsLeft=_vtDur;
     // Flash court pour signaler le changement
     const sp=document.getElementById('vt-speed');
     if(sp){ sp.style.color='#fff'; setTimeout(()=>{ sp.style.color='var(--accent)'; },300); }
@@ -6401,7 +6449,7 @@ function vtUpdateUI(){
   const sp=document.getElementById('vt-speed');
   if(sp) sp.textContent=_vtCurrentSpeed.toFixed(1);
 
-  const pct=Math.round(((VT_DUR-_vtSecsLeft)/VT_DUR)*100);
+  const pct=Math.round(((_vtDur-_vtSecsLeft)/_vtDur)*100);
   const bar=document.getElementById('vt-bar');
   if(bar) bar.style.width=pct+'%';
 
@@ -6436,11 +6484,49 @@ function vtUpdateUI(){
   }
 }
 
+// Recalcule la VMA si l'utilisateur corrige la durée réelle dans le palier
+// La fraction de palier tenue détermine si on retient ce palier ou le précédent
+// Formule : vma = vitesse_palier_précédent + (secs_tenus / dur_palier) * VT_STEP
+function recalcVmaFromDur(){
+  const minVal = parseInt(document.getElementById('vmaresult-dur-min').value||'0')||0;
+  const secVal = parseInt(document.getElementById('vmaresult-dur-sec').value||'0')||0;
+  const totalSecs = minVal*60 + secVal;
+  if(totalSecs<=0||totalSecs>_vtDur+30) return; // valeur incohérente
+  const VT_MIN_VALID = 60;
+  let vma, hint;
+  if(totalSecs < VT_MIN_VALID && _vtPalier > 1){
+    vma = vtSpeed(_vtPalier - 1);
+    hint = `< 60s dans ce palier → VMA retenue : palier ${_vtPalier - 1} (${vma.toFixed(1)} km/h)`;
+  } else {
+    // Fraction de palier tenue → interpolation fractionnaire
+    const frac = Math.min(totalSecs / _vtDur, 1);
+    vma = Math.round((vtSpeed(_vtPalier - 1) + frac * VT_STEP) * 10) / 10;
+    hint = `${totalSecs}s sur ${_vtDur}s → VMA corrigée : ${vma.toFixed(1)} km/h`;
+  }
+  document.getElementById('vt-result-vma').textContent = vma.toFixed(1);
+  document.getElementById('vmaresult-speed').value = vma.toFixed(1);
+  const hintEl = document.getElementById('vmaresult-dur-hint');
+  if(hintEl) hintEl.textContent = hint;
+  calcVmaFromResult();
+}
+
+function _prefillDurFields(secsInCurrentPalier){
+  // Pré-remplir les champs min/sec avec la durée capturée par le timer
+  const m = Math.floor(secsInCurrentPalier/60);
+  const s = secsInCurrentPalier%60;
+  const minEl = document.getElementById('vmaresult-dur-min');
+  const secEl = document.getElementById('vmaresult-dur-sec');
+  if(minEl) minEl.value = m > 0 ? m : '';
+  if(secEl) secEl.value = s > 0 ? s : (m > 0 ? '0' : '');
+  const hintEl = document.getElementById('vmaresult-dur-hint');
+  if(hintEl) hintEl.textContent = `Durée capturée : ${m > 0 ? m+'min ' : ''}${s}s — corrigez si besoin`;
+}
+
 function vtCannotHold(){
   // v97 — seuil de validation : 60s minimum dans le palier (convention Léger-Boucher)
   // Si arrêt avant 60s dans le palier → VMA = palier précédent
   stopVmaTimer();
-  const secsInCurrentPalier = VT_DUR - _vtSecsLeft;
+  const secsInCurrentPalier = _vtDur - _vtSecsLeft;
   const VT_MIN_VALID = 60; // secondes min pour valider un palier comme VMA
   let vma;
   let warning = null;
@@ -6451,6 +6537,7 @@ function vtCannotHold(){
   } else {
     vma = _vtCurrentSpeed;
   }
+  _prefillDurFields(secsInCurrentPalier);
   document.getElementById('vt-result-vma').textContent=vma.toFixed(1);
   document.getElementById('vmaresult-auto-block').style.display='';
   document.getElementById('vmaresult-manual-block').style.display='none';
@@ -6597,26 +6684,60 @@ function applyVmaResult(){
   if(!v||v<6||v>25) return;
   const newVma=Math.round(v*10)/10;
   const oldVma=PROG.vma;
-  // Mettre à jour la VMA dans PROG
-  PROG.vma=newVma;
-  PROG.Z={
-    z1:{min:+(newVma*0.60).toFixed(1),max:+(newVma*0.72).toFixed(1),label:'Z1 - Endurance fondamentale'},
-    z2:{min:+(newVma*0.72).toFixed(1),max:+(newVma*0.82).toFixed(1),label:'Z2 - Endurance longue'},
-    z3:{min:+(newVma*0.82).toFixed(1),max:+(newVma*0.92).toFixed(1),label:'Z3 - Seuil / Tempo'},
-    z4:{min:+(newVma*0.95).toFixed(1),max:+(newVma*1.00).toFixed(1),label:'Z4 - VMA (intervalles)'},
-  };
-  // Enregistrer le résultat sur la séance test
-  for(const wk of PROG.weeks){
-    const s=wk.sessions.find(s=>s.id===_currentVmaTestId);
+
+  // Compter les séances futures non faites
+  let futureSessCount=0;
+  (PROG.weeks||[]).forEach(wk=>(wk.sessions||[]).forEach(s=>{
+    if(!DONE[s.id]&&!TRAIN_DATA[s.id+'__done']) futureSessCount++;
+  }));
+
+  // Sauvegarder les métadonnées du test avant régénération
+  const testId=_currentVmaTestId;
+  const savedVmaTests=(PROG.vmaTests||[]).map(t=>t.id===testId?{...t,resultVma:newVma}:t);
+
+  // Régénérer le programme complet avec la nouvelle VMA (même logique que applyRecalib)
+  const p=PROG;
+  Q.dist=p.dist; Q.profil=p.profil; Q.speed=p.speed;
+  Q.goalSec=p.goalSec; Q.goalTime=p.goalTime||fmtSec(p.goalSec||0);
+  Q.volume=p.volume; Q.days=p.days;
+  Q.raceDate=p.raceDate; Q.raceName=p.raceName;
+  Q.startDate=p.startDate||null;
+  Q.cotes=p.cotes||'non'; Q.injury=p.injury||0;
+  Q.raceEvents=Array.isArray(p.raceEvents)?p.raceEvents:[];
+  Q.intermediateRace=p.intermediateRace||null;
+  Q._goalConfirmed=true;
+  Q._vmaOverride=newVma;
+
+  const newProg=generateProgram();
+  delete Q._vmaOverride;
+  Q._goalConfirmed=false;
+
+  // Réinjecter les métadonnées test VMA
+  newProg.vmaTests=savedVmaTests;
+  // Marquer le résultat sur la séance test si elle existe dans le nouveau plan
+  for(const wk of newProg.weeks){
+    const s=wk.sessions.find(s=>s.id===testId);
     if(s){ s.resultVma=newVma; break; }
   }
-  // Mettre à jour dans vmaTests
-  const t=(PROG.vmaTests||[]).find(t=>t.id===_currentVmaTestId);
-  if(t) t.resultVma=newVma;
-  saveProg(PROG);
+  newProg.vmaOverride=newVma;
+
+  PROG=newProg;
+  saveProg(newProg);
+  (function(){
+    var lib=loadLibrary(); var activeId=getActiveId();
+    if(activeId){
+      var idx=lib.findIndex(e=>e.id===activeId);
+      if(idx>=0){ lib[idx].prog=newProg; saveLibrary(lib); return; }
+    }
+    var newId='prog_'+Date.now();
+    lib.unshift({id:newId,prog:newProg,done:DONE||{},train:TRAIN_DATA||{},history:[]});
+    saveLibrary(lib); setActiveId(newId);
+  })();
+
+  try{ localStorage.removeItem('rp_vma_pending'); }catch(e){}
   closeVmaResultModal();
   renderPlan(PROG);
-  toast(`VMA mise à jour : ${oldVma} → ${newVma} km/h · Zones recalculées ✓`);
+  toast(`VMA mesurée : ${oldVma} → ${newVma} km/h · ${futureSessCount} séance${futureSessCount>1?'s':''} recalculées ✓`);
 }
 
 // ── Renforcement : cocher un exercice individuel ─────────────────────────
