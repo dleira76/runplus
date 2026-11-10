@@ -2037,7 +2037,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "108";
+const GENERATOR_VERSION = "110";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4095,6 +4095,8 @@ function regenPlan(){
   Q._goalConfirmed=true; // pas de vérif objectif, on garde les paramètres tels quels
   // Regénérer
   const newProg = generateProgram();
+  // Réinjecter les séances VMA test (IDs dynamiques, non générés par generateProgram)
+  _reinjectVmaTestSessions(p, newProg, null, null);
   PROG = newProg;
   saveProg(newProg);
   // Mettre à jour la librairie en conservant done/train/history
@@ -6567,11 +6569,14 @@ function vtCannotHold(){
   let vma;
   let warning = null;
   if (secsInCurrentPalier < VT_MIN_VALID && _vtPalier > 1) {
-    // Palier non tenu suffisamment : on retient le palier précédent
+    // Palier non tenu suffisamment (< 60s) : on retient le palier précédent
     vma = vtSpeed(_vtPalier - 1);
     warning = `Arrêt après ${secsInCurrentPalier}s dans le palier — VMA retenue : palier ${_vtPalier - 1} (${vma.toFixed(1)} km/h)`;
   } else {
-    vma = _vtCurrentSpeed;
+    // Calcul fractionné : fraction du palier tenue → interpolation entre palier précédent et actuel
+    const frac = Math.min(secsInCurrentPalier / _vtDur, 1);
+    const prevSpeed = _vtPalier > 1 ? vtSpeed(_vtPalier - 1) : VT_START;
+    vma = Math.round((prevSpeed + frac * VT_STEP) * 10) / 10;
   }
   _prefillDurFields(secsInCurrentPalier);
   document.getElementById('vt-result-vma').textContent=vma.toFixed(1);
@@ -6660,12 +6665,37 @@ let _currentVmaTestId=null;
 function openVmaResultModal(sessId){
   // Redirigé vers la modal unifiée (vue résultat)
   _currentVmaTestId=sessId;
-  document.getElementById('vmaresult-auto-block').style.display='none';
-  document.getElementById('vmaresult-manual-block').style.display='';
-  document.getElementById('vmaresult-speed').value='';
-  document.getElementById('vmaresult-preview').style.display='none';
-  document.getElementById('vmaresult-apply-btn').style.display='none';
   document.getElementById('vmaresult-err').style.display='none';
+
+  // Si un résultat pending existe pour cette séance → pré-remplir
+  let pendingSpeed=null;
+  try{
+    const p=JSON.parse(localStorage.getItem('rp_vma_pending')||'null');
+    if(p&&p.sessId===sessId&&p.speed) pendingSpeed=p.speed;
+  }catch(e){}
+
+  // Si la séance a déjà un résultat → pré-remplir aussi
+  if(!pendingSpeed && PROG){
+    for(const wk of PROG.weeks||[]){
+      const s=(wk.sessions||[]).find(s=>s.id===sessId);
+      if(s&&s.resultVma){ pendingSpeed=s.resultVma; break; }
+    }
+  }
+
+  if(pendingSpeed){
+    document.getElementById('vt-result-vma').textContent=pendingSpeed.toFixed(1);
+    document.getElementById('vmaresult-speed').value=pendingSpeed.toFixed(1);
+    document.getElementById('vmaresult-auto-block').style.display='';
+    document.getElementById('vmaresult-manual-block').style.display='none';
+  } else {
+    document.getElementById('vmaresult-auto-block').style.display='none';
+    document.getElementById('vmaresult-manual-block').style.display='';
+    document.getElementById('vmaresult-speed').value='';
+    document.getElementById('vmaresult-preview').style.display='none';
+    document.getElementById('vmaresult-apply-btn').style.display='none';
+  }
+
+  calcVmaFromResult();
   _showVmatestView('result');
   const modal=document.getElementById('vmatest-modal');
   const sheet=document.getElementById('vmatest-sheet');
@@ -6680,7 +6710,16 @@ function closeVmaResultModal(e){
 }
 
 function calcVmaFromResult(){
-  const v=parseFloat(document.getElementById('vmaresult-speed').value);
+  // Lire la VMA soit depuis le champ manuel soit depuis l'affichage auto
+  const manualEl=document.getElementById('vmaresult-speed');
+  const autoEl=document.getElementById('vt-result-vma');
+  const autoBlockVisible=document.getElementById('vmaresult-auto-block').style.display!=='none';
+  let v=parseFloat(manualEl.value);
+  if((!v||isNaN(v)) && autoBlockVisible && autoEl && autoEl.textContent!=='—'){
+    v=parseFloat(autoEl.textContent);
+    // Synchroniser le champ caché pour que applyVmaResult() puisse le lire
+    if(!isNaN(v)) manualEl.value=v.toFixed(1);
+  }
   const prev=document.getElementById('vmaresult-preview');
   const btn=document.getElementById('vmaresult-apply-btn');
   if(!v||v<6||v>25){ prev.style.display='none'; btn.style.display='none'; return; }
