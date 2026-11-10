@@ -2060,7 +2060,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "120";
+const GENERATOR_VERSION = "121";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4509,7 +4509,7 @@ function buildSessHTML(sess,wn,si){
           <div class="sess-label">
             <span class="sess-num">S${wn}.${si+1}</span>
             <span class="sess-type renfo">${label}</span>
-            ${totalMin>0?`<span class="sess-dur">${Math.round(totalMin)} MIN</span>`:''}
+            ${(sess.totalMin||0)>0?`<span class="sess-dur">${Math.round(sess.totalMin)} MIN</span>`:''}
           </div>
         </div>
         <span class="renfo-toggle-arrow" id="renfo-arrow-${sess.id}" onclick="toggleRenfoGrid('${sess.id}')" style="cursor:pointer">▶</span>
