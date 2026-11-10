@@ -989,8 +989,25 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
         </div>
         <!-- Action principale -->
         <button onclick="vtCannotHold()" style="width:100%;padding:16px;border-radius:12px;border:none;background:#c0392b;color:#fff;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:10px">
-          🛑 Je n'arrive plus à maintenir
+          🛑 Je n'arrive plus à maintenir — noter ma VMA
         </button>
+        <!-- Saisie manuelle de la durée totale (sans timer, ou correction) -->
+        <div style="background:var(--bg);border-radius:10px;padding:11px 13px;margin-bottom:10px">
+          <div style="font-size:12px;color:var(--fg-muted);margin-bottom:8px">⏱ Ou saisir la durée totale tenue (sans timer)</div>
+          <div style="display:flex;gap:8px;align-items:flex-end">
+            <div style="flex:1">
+              <label style="font-size:11px;color:var(--fg-muted);display:block;margin-bottom:3px">Min</label>
+              <input type="number" id="vt-manual-min" class="q-input" min="0" max="59" step="1" placeholder="11" style="font-size:16px;padding:9px 10px">
+            </div>
+            <div style="flex:1">
+              <label style="font-size:11px;color:var(--fg-muted);display:block;margin-bottom:3px">Sec</label>
+              <input type="number" id="vt-manual-sec" class="q-input" min="0" max="59" step="1" placeholder="34" style="font-size:16px;padding:9px 10px">
+            </div>
+            <div style="flex:0 0 auto">
+              <button onclick="vtManualDuration()" style="padding:10px 14px;border-radius:8px;border:none;background:#6b35b0;color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Calculer VMA</button>
+            </div>
+          </div>
+        </div>
         <button onclick="vtPause()" id="vt-pause-btn" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">
           ⏸ Pause
         </button>
@@ -2037,7 +2054,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "110";
+const GENERATOR_VERSION = "111";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -6558,6 +6575,48 @@ function _prefillDurFields(secsInCurrentPalier){
   if(secEl) secEl.value = s > 0 ? s : (m > 0 ? '0' : '');
   const hintEl = document.getElementById('vmaresult-dur-hint');
   if(hintEl) hintEl.textContent = `Durée capturée : ${m > 0 ? m+'min ' : ''}${s}s — corrigez si besoin`;
+}
+
+// Calcul VMA depuis durée totale saisie manuellement (sans avoir utilisé le timer)
+function vtManualDuration(){
+  const minVal = parseInt(document.getElementById('vt-manual-min').value||'0')||0;
+  const secVal = parseInt(document.getElementById('vt-manual-sec').value||'0')||0;
+  const totalSecs = minVal*60 + secVal;
+  if(totalSecs < 60){ alert('Durée trop courte (minimum 1 min).'); return; }
+  // Calculer le palier atteint + fraction
+  // Protocole : 3 min échauffement à 6 km/h, puis paliers de _vtDur sec à partir de 8 km/h
+  const warmupSecs = 3*60;
+  const secsInPaliers = Math.max(0, totalSecs - warmupSecs);
+  const palierIndex = Math.floor(secsInPaliers / _vtDur); // 0-based : palier 0 = 8 km/h
+  const secsInCurrentPalier = secsInPaliers % _vtDur;
+  const palierSpeed = VT_START + palierIndex * VT_STEP; // vitesse du palier en cours
+  const VT_MIN_VALID = 60;
+  let vma;
+  if(palierIndex === 0 && secsInCurrentPalier < VT_MIN_VALID){
+    alert('Durée insuffisante pour calculer une VMA (tenir au moins 1 min dans le premier palier à 8 km/h).');
+    return;
+  }
+  if(secsInCurrentPalier < VT_MIN_VALID && palierIndex > 0){
+    // Pas tenu 60s dans ce palier → palier précédent
+    vma = VT_START + (palierIndex - 1) * VT_STEP;
+  } else {
+    const frac = Math.min(secsInCurrentPalier / _vtDur, 1);
+    const prevSpeed = palierIndex > 0 ? VT_START + (palierIndex - 1) * VT_STEP : VT_START;
+    vma = Math.round((prevSpeed + frac * VT_STEP) * 10) / 10;
+  }
+  // Passer à la vue résultat avec la VMA calculée
+  stopVmaTimer();
+  _prefillDurFields(secsInCurrentPalier);
+  // Mettre à jour aussi _vtPalier pour cohérence avec recalcVmaFromDur()
+  _vtPalier = palierIndex + 1;
+  document.getElementById('vt-result-vma').textContent = vma.toFixed(1);
+  document.getElementById('vmaresult-auto-block').style.display='';
+  document.getElementById('vmaresult-manual-block').style.display='none';
+  document.getElementById('vmaresult-speed').value = vma.toFixed(1);
+  document.getElementById('vmaresult-err').style.display='none';
+  _showVmatestView('result');
+  try{ localStorage.setItem('rp_vma_pending', JSON.stringify({sessId:_currentVmaTestId, speed:vma})); }catch(e){}
+  calcVmaFromResult();
 }
 
 function vtCannotHold(){
