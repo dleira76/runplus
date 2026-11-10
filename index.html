@@ -2061,7 +2061,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "121";
+const GENERATOR_VERSION = "122";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3835,7 +3835,7 @@ function generatePlan(){
 // Clé rp_active  : id du programme actif (affiché au démarrage)
 // Clé rp_star    : id du programme favori (lancé automatiquement)
 // =======================================================================
-function loadLibrary(){try{return JSON.parse(localStorage.getItem('rp_library')||'[]');}catch(e){return[];}}
+function loadLibrary(){try{const lib=JSON.parse(localStorage.getItem('rp_library')||'[]');return lib.filter(function(e){return e&&e.id&&e.prog&&Array.isArray(e.prog.weeks)&&e.prog.weeks.length>0;});}catch(e){return[];}}
 function saveLibrary(lib){try{localStorage.setItem('rp_library',JSON.stringify(lib));}catch(e){}}
 function getActiveId(){try{return localStorage.getItem('rp_active')||null;}catch(e){return null;}}
 function setActiveId(id){try{if(id)localStorage.setItem('rp_active',id);else localStorage.removeItem('rp_active');}catch(e){}}
@@ -7899,7 +7899,7 @@ function openPartialQuestionnaire(saved, missingFields){
   // Programme favori défini → lancer directement
   if(starId){
     var starEntry = lib.find(function(e){ return e.id === starId; });
-    if(starEntry && starEntry.prog && starEntry.prog.weeks){
+    if(starEntry && starEntry.prog && starEntry.prog.weeks && starEntry.prog.weeks.length > 0){
       PROG = starEntry.prog;
       DONE = starEntry.done || {};
       TRAIN_DATA = starEntry.train || {};
@@ -7921,13 +7921,18 @@ function openPartialQuestionnaire(saved, missingFields){
           }
         } catch(e){}
       }
-      renderPlan(PROG);
-      showScreen('screen-plan');
-      return;
+      try {
+        renderPlan(PROG);
+        showScreen('screen-plan');
+        return;
+      } catch(e) {
+        console.error('init renderPlan error:', e);
+        // Programme corrompu → tomber sur la Home
+      }
     }
   }
 
-  // Pas de favori → afficher la Home
+  // Pas de favori ou programme invalide → afficher la Home
   renderHome();
   showScreen('screen-home');
   return;
