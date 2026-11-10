@@ -1179,6 +1179,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <div class="plan-hdr-group">
         <button class="btn-hdr-add" onclick="openAddRun()" title="Ajouter une course réalisée">+ Course</button>
         <button class="btn-hdr-vma" onclick="openAddVmaTest()" title="Planifier ou lancer un test VMA">🧪 Test VMA</button>
+        <button class="btn-hdr" onclick="confirmResetProgram()" title="Remettre le programme à zéro (semaine 1)" style="background:var(--surface);color:#c0392b;border:1.5px solid #c0392b;font-size:11px;padding:5px 9px;border-radius:8px;font-weight:700;cursor:pointer">↺ Reset</button>
       </div>
     </div>
     <input type="file" id="inp-load-file" accept=".runplan,.json" style="display:none" onchange="loadFile(event)">
@@ -2060,7 +2061,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "119";
+const GENERATOR_VERSION = "120";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -7556,6 +7557,56 @@ ${weeksHtml}
   document.body.removeChild(a2); URL.revokeObjectURL(url2);
   } // fin if(false)
 }
+
+// ─── Reset programme ────────────────────────────────────────────────────────
+function confirmResetProgram(){
+  if(!PROG) return;
+  const nDone=Object.keys(DONE).filter(k=>DONE[k]).length;
+  const msg=nDone>0
+    ? `Remettre le programme à zéro ?\n\n${nDone} séance(s) marquée(s) comme faites seront effacées.\nLes courses enregistrées seront converties en courses libres.\n\nCette action est irréversible.`
+    : `Remettre le programme à zéro ?\n\nLes courses enregistrées seront converties en courses libres.\n\nCette action est irréversible.`;
+  if(!confirm(msg)) return;
+  resetProgram();
+}
+
+function resetProgram(){
+  if(!PROG) return;
+
+  // 1. Collecter tous les ids de séances du programme
+  const sessIds=new Set();
+  (PROG.weeks||[]).forEach(wk=>(wk.sessions||[]).forEach(s=>sessIds.add(s.id)));
+
+  // 2. Convertir les courses liées à ces séances en courses libres
+  TRAIN_DATA=loadTrain();
+  const newTrain={};
+  Object.entries(TRAIN_DATA).forEach(([k,v])=>{
+    if(sessIds.has(k)){
+      // Transformer en course libre : nouvel id free_DATE ou free_SESSID
+      const dateStr=(v.date||new Date().toISOString().slice(0,10)).replace(/-/g,'');
+      let newKey='free_'+dateStr+'_'+k;
+      // Éviter les collisions
+      let n=1; let tryKey=newKey;
+      while(newTrain[tryKey]&&n<99){ tryKey=newKey+'_'+n; n++; }
+      newTrain[tryKey]={...v, free:true};
+    } else {
+      newTrain[k]=v; // courses libres et vma_test → conserver
+    }
+  });
+  TRAIN_DATA=newTrain;
+  saveTrain();
+
+  // 3. Vider DONE (toutes séances remises à zéro)
+  DONE={};
+  saveDone();
+
+  // 4. Synchroniser la librairie
+  syncActiveToLibrary();
+
+  // 5. Re-rendre
+  renderPlan(PROG);
+  toast('Programme remis à zéro ✓');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Hydratation programmes externes ────────────────────────────────────────
 // Convertit les séances desc+dur d'un programme externe en steps structurés
