@@ -2060,7 +2060,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "116";
+const GENERATOR_VERSION = "117";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4505,7 +4505,7 @@ function buildSessHTML(sess,wn,si){
           <div class="sess-label">
             <span class="sess-num">S${wn}.${si+1}</span>
             <span class="sess-type renfo">${label}</span>
-            <span class="sess-dur">${Math.round(sess.totalMin)} MIN</span>
+            ${totalMin>0?`<span class="sess-dur">${Math.round(totalMin)} MIN</span>`:''}
           </div>
         </div>
         <span class="renfo-toggle-arrow" id="renfo-arrow-${sess.id}" onclick="toggleRenfoGrid('${sess.id}')" style="cursor:pointer">▶</span>
@@ -4517,6 +4517,31 @@ function buildSessHTML(sess,wn,si){
   }
 
   // Séances normales: supporter les deux formats d'étape (ancien {l,c,s} + nouveau {txt,t})
+  // Programmes externes (import manuel) : pas de steps — construire un affichage simplifié depuis desc+dur
+  const totalMin = sess.totalMin != null ? sess.totalMin : (sess.dur != null ? sess.dur : 0);
+  if(!sess.steps || !sess.steps.length){
+    const descTxt=sess.desc||sess.label||'';
+    const durTxt=totalMin>0?(totalMin>=60?Math.floor(totalMin/60)+'h'+(totalMin%60?String(Math.round(totalMin%60)).padStart(2,'0'):''):Math.round(totalMin)+' min'):'';
+    const kmTxt=sess.km>0?sess.km.toFixed(1)+' km':'';
+    const stepsSimple=`<div class="sess-step"><div class="ss-dot cool"></div><div class="ss-body"><div class="ss-label" style="white-space:pre-wrap">${descTxt}</div><div class="ss-meta">${kmTxt?`<span class="ss-spd cool">${kmTxt}</span>`:''}${durTxt?`<span class="ss-time">${durTxt}</span>`:''}</div></div></div>`;
+    return`<div class="session${isDone?' done':''}" id="sess-${sess.id}">
+      <div class="sess-top" onclick="toggleSess('${sess.id}')" style="cursor:pointer">
+        <div class="done-badge">✓</div>
+        <div class="sess-info">
+          <div class="sess-label">
+            <span class="sess-num">S${wn}.${si+1}</span>
+            <span class="sess-type ${sess.type}">${SESS_LABELS[sess.type]||sess.label||sess.type}</span>
+            ${totalMin>0?`<span class="sess-dur">${Math.round(totalMin)} MIN</span>`:''}
+          </div>
+          ${sess.date?`<div class="sess-date" style="font-size:11px;color:var(--fg-muted);margin-top:2px">${humanDate(sess.date)}</div>`:''}
+        </div>
+        <span class="sess-chevron" id="sess-chev-${sess.id}" style="font-size:11px;color:var(--fg-muted);margin-left:4px;transition:transform .2s;transform:rotate(-90deg)">▼</span>
+        <button class="tl-btn" onclick="event.stopPropagation();openTL('${sess.id}')">&#9201; Timeline</button>
+      </div>
+      <div class="sess-steps" id="sess-body-${sess.id}" style="display:none">${stepsSimple}</div>
+      ${trainBadge}
+    </div>`;
+  }
   const stepsHTML=sess.steps.map(st=>{
     // Nouveau format (moteur v13+): st.t, st.txt
     let cls='cool', speedTxt=st.s||'';
@@ -4552,7 +4577,7 @@ function buildSessHTML(sess,wn,si){
         <div class="sess-label">
           <span class="sess-num">S${wn}.${si+1}</span>
           <span class="sess-type ${sess.type}">${label}</span>
-          <span class="sess-dur">${Math.round(sess.totalMin)} MIN</span>
+          ${totalMin>0?`<span class="sess-dur">${Math.round(totalMin)} MIN</span>`:''}
         </div>
       </div>
       <span class="sess-chevron" id="sess-chev-${sess.id}" style="font-size:11px;color:var(--fg-muted);margin-left:4px;transition:transform .2s;transform:rotate(-90deg)">▼</span>
