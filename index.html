@@ -2060,7 +2060,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "118";
+const GENERATOR_VERSION = "119";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5542,10 +5542,14 @@ function openTL(id){
     _currentVmaTestId=id;
     TL_SESS.steps=buildVmaTestSteps();
   }
+  if(!TL_SESS.steps||!TL_SESS.steps.length){
+    // Séance sans steps (programme externe non hydraté) — construire un step minimal
+    TL_SESS.steps=[{t:'active',d:TL_SESS.totalMin||TL_SESS.dur||30,txt:TL_SESS.label||TL_SESS.title||TL_SESS.type}];
+  }
   let cum=0;
   TL_STEPS=TL_SESS.steps.map(s=>{const st=cum;cum+=(s.d||0)*60;return{...s,startSec:st,endSec:cum};});
   TL_TOTAL=cum;
-  document.getElementById('tlTitle').textContent=TL_SESS.title||'Test VMA';
+  document.getElementById('tlTitle').textContent=TL_SESS.title||TL_SESS.label||SESS_LABELS[TL_SESS.type]||'Séance';
   document.getElementById('tlTotal').textContent=TL_SESS.type==='vma_test'?'Durée variable · arrête quand tu n\'arrives plus':'Durée : '+Math.round(TL_TOTAL/60)+' min';
   updateDoneUI(!!DONE[TL_SESS.id]);
   updateTrainBadge();
@@ -7553,6 +7557,149 @@ ${weeksHtml}
   } // fin if(false)
 }
 
+// ─── Hydratation programmes externes ────────────────────────────────────────
+// Convertit les séances desc+dur d'un programme externe en steps structurés
+// avec plages de vitesse issues des zones Z, pour que Timeline et voix fonctionnent.
+function _hydrateExternalProg(prog){
+  if(!prog||!prog.weeks) return prog;
+  const vma=prog.vma||0;
+  const allure=prog.allureCible||prog.speed||0;
+  const dist=prog.dist||21.1;
+  const Z=vma?calcZones(vma,allure,dist):null;
+
+  // Helpers vitesse → texte (plage Z)
+  function _fspd(min,max){ return min&&max?`${min.toFixed(1)}–${max.toFixed(1)} km/h`:(min?`${min.toFixed(1)} km/h`:''); }
+  function _fpace(kmh){ if(!kmh||kmh<=0)return''; const s=Math.round(3600/kmh); const m=Math.floor(s/60); return m+'\''+(s%60?String(s%60).padStart(2,'0')+'\'\'':''); }
+  function z1txt(){ return Z?`${_fspd(Z.z1.min,Z.z1.max)} · ${_fpace(Z.z1.max)}/km`:'endurance fondamentale'; }
+  function z2txt(){ return Z?`${_fspd(Z.z2.min,Z.z2.max)} · ${_fpace(Z.z2.max)}/km`:'endurance active'; }
+  function z3txt(){ return Z?`${_fspd(Z.z3.min,Z.z3.max)} · ${_fpace(Z.z3.min)}/km`:'tempo/seuil'; }
+  function z4txt(){ return Z?`${_fspd(Z.z4.min,Z.z4.max)}`:'VMA'; }
+  function coursetxt(){ return Z&&Z.course?`${_fspd(Z.course.min,Z.course.max)} · ${_fpace(Z.course.min)}/km`:(allure?`${allure.toFixed(1)} km/h`:'allure course'); }
+
+  // Détection du type de ligne desc
+  function _parseLine(line, sessType, totalDurMin){
+    const l=line.trim().toLowerCase();
+    if(!l) return null;
+
+    // Durée explicite en début de ligne : "15min footing", "1h30 endurance"
+    const durMatch=line.match(/^(\d+)(?:h(\d*))?\s*(?:min\s*)?(.*)$/i)||line.match(/^(\d+)h(\d*)\s*(.*)$/i);
+    let lineDurMin=0;
+    const mDur=line.match(/^(\d+)h(\d{0,2})\s*(.*)/i);
+    const mMin=line.match(/^(\d+)\s*min\s*(.*)/i);
+    if(mDur){ lineDurMin=parseInt(mDur[1])*60+(mDur[2]?parseInt(mDur[2])||0:0); }
+    else if(mMin){ lineDurMin=parseInt(mMin[1]); }
+
+    // Patterns
+    const isEchauff = /échauffement|echauffement/i.test(line);
+    const isRetour  = /retour au calme/i.test(line);
+    const isFoot1   = /allure\s*1\b/i.test(line)||/endurance fond/i.test(line)||/ef\b/i.test(line);
+    const isFoot12  = /allure\s*1\s*ou\s*2/i.test(line)||/allure\s*1\/2/i.test(line);
+    const isFoot2   = /allure\s*2\b/i.test(line)||/endurance active/i.test(line);
+    const isFrac    = /×|x\s*\d+|répétition|interval|fractionnés/i.test(line)&&/\d+(m|sec|min|km)\b/i.test(line);
+    const isCote    = /côte|cote/i.test(line)&&/×|x\s*\d+/i.test(line);
+    const isAbdos   = /abdos|gainage/i.test(line);
+    const isEtir    = /étirement|étirer/i.test(line);
+    const isRepos   = /repos/i.test(line);
+    const isRecup   = /récup|recup/i.test(line)&&!isRetour;
+    const isAccel   = /accélération/i.test(line);
+    const isRace    = /semi-marathon|marathon\s*—|objectif/i.test(line);
+    const isProgressive = /progressive|montée/i.test(line);
+    const isTrot    = /au trot/i.test(line);
+    const isSeuil   = /seuil|tempo|5min27|5'27|à\s*\d+min\d+/i.test(line);
+    const isCourse  = /à\s*[\d'\"min]+\s*\/?\s*km|\/km/i.test(line)||/\d+min\d+\/km/i.test(line);
+
+    // Durée pour ce step
+    const dur = lineDurMin > 0 ? lineDurMin : (isEchauff||isRetour ? 15 : isFrac||isCote ? 0 : isFoot1||isFoot2||isFoot12 ? (totalDurMin||30) : 0);
+
+    if(isRepos && !isFoot1 && !isFoot2){ return {t:'rest',d:0,txt:line.trim()}; }
+    if(isAbdos||isEtir||isAccel){ return {t:'rest',d:lineDurMin||10,txt:line.trim()}; }
+    if(isRace){ return {t:'active',d:lineDurMin||totalDurMin||60,txt:line.trim(),s:coursetxt()}; }
+
+    // Échauffement
+    if(isEchauff){
+      const d=lineDurMin||(sessType==='frac'||sessType==='cotes'?15:10);
+      return {t:'active',d:d,txt:`Échauffement footing · ${z1txt()}`,s:_fspd(Z?Z.z1.min:0,Z?Z.z1.max:0)};
+    }
+    // Retour au calme
+    if(isRetour){
+      const d=lineDurMin||15;
+      return {t:'rest',d:d,txt:`Retour au calme · ${z1txt()}`,s:_fspd(Z?Z.z1.min:0,Z?Z.z1.max:0)};
+    }
+    // Footing allure 1 (ou 1/2 → Z1)
+    if(isFoot1&&!isFoot2){
+      const d=lineDurMin||(totalDurMin||30);
+      return {t:'active',d:d,txt:`Footing endurance fondamentale · ${z1txt()}`,s:_fspd(Z?Z.z1.min:0,Z?Z.z1.max:0)};
+    }
+    // Footing allure 2 (ou 1 ou 2 → Z2)
+    if(isFoot2||isFoot12){
+      const d=lineDurMin||(totalDurMin||30);
+      const zLabel=isFoot12?`Z1–Z2 · ${_fspd(Z?Z.z1.min:0,Z?Z.z2.max:0)}`:`${z2txt()}`;
+      const zSpd=isFoot12?_fspd(Z?Z.z1.min:0,Z?Z.z2.max:0):_fspd(Z?Z.z2.min:0,Z?Z.z2.max:0);
+      return {t:'active',d:d,txt:`Footing endurance · ${zLabel}`,s:zSpd};
+    }
+    // Côtes
+    if(isCote){
+      return {t:'active',d:0,txt:line.trim()+` · ${z4txt()||'effort maximal'}`,s:_fspd(Z?Z.z4.min:0,Z?Z.z4.max:0)};
+    }
+    // Fractionné avec allure précisée (seuil / allure course)
+    if(isFrac && isSeuil){
+      return {t:'active',d:0,txt:line.trim()+` · allure course (${coursetxt()})`,s:_fspd(Z?Z.course&&Z.course.min:allure,Z?Z.course&&Z.course.max:allure)};
+    }
+    // Fractionné VMA
+    if(isFrac){
+      return {t:'active',d:0,txt:line.trim()+` · ${z4txt()||'VMA'}`,s:_fspd(Z?Z.z4.min:0,Z?Z.z4.max:0)};
+    }
+    // Récupération trot
+    if(isRecup||isTrot){
+      return {t:'rest',d:0,txt:line.trim()+` · ${z1txt()}`,s:_fspd(Z?Z.z1.min:0,Z?Z.z1.max:0)};
+    }
+    // Seuil inline
+    if(isSeuil){
+      return {t:'active',d:lineDurMin||0,txt:line.trim()+` · ${coursetxt()}`,s:_fspd(Z?Z.course&&Z.course.min:allure,Z?Z.course&&Z.course.max:allure)};
+    }
+    // Fallback : ligne info
+    return {t:'active',d:lineDurMin||0,txt:line.trim()};
+  }
+
+  prog.weeks.forEach(wk=>{
+    (wk.sessions||[]).forEach(sess=>{
+      if(sess.steps&&sess.steps.length) return; // déjà structuré
+      // Ajouter title + totalMin si absents
+      if(!sess.title) sess.title = sess.label||sess.type;
+      if(sess.totalMin==null) sess.totalMin = sess.dur||0;
+
+      const lines=(sess.desc||'').split('\n').map(l=>l.trim()).filter(l=>l);
+      if(!lines.length){
+        // Pas de desc : step unique
+        sess.steps=[{t:'active',d:sess.totalMin||30,txt:sess.label||sess.type}];
+        return;
+      }
+
+      const steps=lines.map(l=>_parseLine(l, sess.type, sess.totalMin)).filter(Boolean);
+
+      // Ajuster les durées : si une ligne n'a pas de durée (d=0), la distribuer proportionnellement
+      const totalFixed=steps.filter(s=>s.d>0).reduce((a,s)=>a+s.d,0);
+      const nFree=steps.filter(s=>s.d===0).length;
+      if(nFree>0 && sess.totalMin>0){
+        const freeEach=Math.max(1,Math.round((sess.totalMin-totalFixed)/nFree));
+        steps.forEach(s=>{ if(s.d===0) s.d=freeEach; });
+      }
+
+      // Si la somme des steps dépasse ou manque beaucoup la durée totale, ajuster le plus long
+      const sumD=steps.reduce((a,s)=>a+(s.d||0),0);
+      if(sess.totalMin>0 && Math.abs(sumD-sess.totalMin)>2){
+        // Trouver le step "footing" principal et ajuster
+        const mainIdx=steps.findIndex(s=>s.t==='active'&&(s.d||0)===Math.max(...steps.filter(x=>x.t==='active').map(x=>x.d||0)));
+        if(mainIdx>=0) steps[mainIdx].d=Math.max(1,steps[mainIdx].d+(sess.totalMin-sumD));
+      }
+
+      sess.steps=steps;
+    });
+  });
+  return prog;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function triggerLoad(){document.getElementById('inp-load-file').value='';document.getElementById('inp-load-file').click();}
 function loadFile(e){
   const file=e.target.files[0];if(!file)return;
@@ -7592,7 +7739,9 @@ function loadFile(e){
           renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
         }
       } else {
-        // Programme externe : conserver tel quel, ne pas regénérer
+        // Programme externe : hydrater les séances (steps + vitesses Z) puis afficher
+        PROG = _hydrateExternalProg(PROG);
+        saveProg(PROG);
         try { saveNewProgToLibrary(PROG); } catch(e2){ console.error('saveNewProgToLibrary error:',e2); }
         try { renderPlan(PROG); } catch(e2){ console.error('renderPlan error:',e2); alert('Erreur rendu : '+e2.message); return; }
         showScreen('screen-plan');toast('Programme importé ✓');
@@ -7604,9 +7753,9 @@ function toast(msg){const el=document.getElementById('tlAnnounce');el.textConten
 
 function exportICS(){
   if(!TL_SESS)return;
-  document.getElementById('icsSessName').textContent=TL_SESS.title;
+  document.getElementById('icsSessName').textContent=TL_SESS.title||TL_SESS.label||'Séance';
   document.getElementById('icsDate').value=isoDate(new Date());
-  document.getElementById('icsDur').textContent=`Durée estimée : ${TL_SESS.totalMin} min`;
+  document.getElementById('icsDur').textContent=`Durée estimée : ${TL_SESS.totalMin||TL_SESS.dur||0} min`;
   document.getElementById('icsOverlay').classList.add('open');
 }
 function closeICS(){document.getElementById('icsOverlay').classList.remove('open');}
