@@ -2061,7 +2061,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "120";
+const GENERATOR_VERSION = "121";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -7905,8 +7905,8 @@ function openPartialQuestionnaire(saved, missingFields){
       TRAIN_DATA = starEntry.train || {};
       RACE_HISTORY = starEntry.history || [];
       setActiveId(starId);
-      // Mise à jour version si nécessaire
-      if(PROG.generatorVersion !== GENERATOR_VERSION){
+      // Mise à jour version si nécessaire (ne jamais régénérer les programmes externes sans generatorVersion)
+      if(PROG.generatorVersion && PROG.generatorVersion !== GENERATOR_VERSION){
         try {
           restoreQFromSaved(PROG);
           if(Q.dist && Q.raceDate && Q.speed){
