@@ -2060,7 +2060,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "117";
+const GENERATOR_VERSION = "118";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4221,7 +4221,11 @@ const SESS_LABELS = {footing:'Footing',frac:'Fractionné',cotes:'Côtes',tempo:'
 
 function renderPlan(prog){
   DONE=loadDone(); TRAIN_DATA=loadTrain(); RACE_HISTORY=loadRaceHistory();
-  const{weeks,Z,vma,allureCible,dist,raceName,raceDate,goalTime,days,profil,speed}=prog;
+  let{weeks,Z,vma,allureCible,dist,raceName,raceDate,goalTime,days,profil,speed}=prog;
+  // Programmes externes : Z et allureCible peuvent être absents — les recalculer
+  if(!allureCible && speed) allureCible = speed;
+  if(!allureCible && prog.goalSec && dist) allureCible = Math.round(dist/(prog.goalSec/3600)*10)/10;
+  if(!Z && vma) Z = calcZones(vma, allureCible, dist);
 
   document.getElementById('planTitle').textContent=raceName||distName(dist);
   const gb=document.getElementById('planGoalBadge');
@@ -7589,10 +7593,11 @@ function loadFile(e){
         }
       } else {
         // Programme externe : conserver tel quel, ne pas regénérer
-        saveNewProgToLibrary(PROG);
-        renderPlan(PROG);showScreen('screen-plan');toast('Programme importé ✓');
+        try { saveNewProgToLibrary(PROG); } catch(e2){ console.error('saveNewProgToLibrary error:',e2); }
+        try { renderPlan(PROG); } catch(e2){ console.error('renderPlan error:',e2); alert('Erreur rendu : '+e2.message); return; }
+        showScreen('screen-plan');toast('Programme importé ✓');
       }
-    }catch(err){alert('Fichier invalide.');}
+    }catch(err){ console.error('loadFile error:',err); alert('Erreur import : '+err.message); }
   };reader.readAsText(file);
 }
 function toast(msg){const el=document.getElementById('tlAnnounce');el.textContent=msg;el.classList.add('show');clearTimeout(_annTO);_annTO=setTimeout(()=>el.classList.remove('show'),2500);}
