@@ -2059,7 +2059,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "112";
+const GENERATOR_VERSION = "113";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -6250,10 +6250,16 @@ function applyRecalib(){
     var activeId = getActiveId();
     if(activeId){
       var idx = lib.findIndex(function(e){ return e.id === activeId; });
-      if(idx >= 0){ lib[idx].prog = newProg; saveLibrary(lib); return; }
+      if(idx >= 0){
+        lib[idx].prog = newProg;
+        lib[idx].done = DONE||{};
+        lib[idx].train = TRAIN_DATA||{};
+        lib[idx].history = RACE_HISTORY||[];
+        saveLibrary(lib); return;
+      }
     }
     var newId = 'prog_' + Date.now();
-    lib.unshift({ id: newId, prog: newProg, done: DONE||{}, train: TRAIN_DATA||{}, history: [] });
+    lib.unshift({ id: newId, prog: newProg, done: DONE||{}, train: TRAIN_DATA||{}, history: RACE_HISTORY||[] });
     saveLibrary(lib);
     setActiveId(newId);
   })();
@@ -6903,13 +6909,22 @@ function applyVmaResult(){
     var lib=loadLibrary(); var activeId=getActiveId();
     if(activeId){
       var idx=lib.findIndex(e=>e.id===activeId);
-      if(idx>=0){ lib[idx].prog=newProg; saveLibrary(lib); return; }
+      if(idx>=0){
+        lib[idx].prog=newProg;
+        lib[idx].done=DONE||{};
+        lib[idx].train=TRAIN_DATA||{};
+        lib[idx].history=RACE_HISTORY||[];
+        saveLibrary(lib); return;
+      }
     }
     var newId='prog_'+Date.now();
-    lib.unshift({id:newId,prog:newProg,done:DONE||{},train:TRAIN_DATA||{},history:[]});
+    lib.unshift({id:newId,prog:newProg,done:DONE||{},train:TRAIN_DATA||{},history:RACE_HISTORY||[]});
     saveLibrary(lib); setActiveId(newId);
   })();
 
+  // Marquer la séance VMA test comme faite
+  DONE[testId] = true;
+  saveDone();
   try{ localStorage.removeItem('rp_vma_pending'); }catch(e){}
   closeVmaResultModal();
   renderPlan(PROG);
