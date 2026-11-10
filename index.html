@@ -2060,7 +2060,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "115";
+const GENERATOR_VERSION = "116";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -7543,19 +7543,29 @@ function loadFile(e){
       saveProg(PROG);saveDone();saveTrain();saveRaceHistory();
       // Restaurer intermediateRace dans Q
       if(PROG.intermediateRace) Q.intermediateRace=PROG.intermediateRace;
-      // Toujours regénérer à l'import pour recalculer VMA/zones depuis l'objectif (v72)
-      try {
-        restoreQFromSaved(PROG);
-        if(!Q.dist || !Q.raceDate || !Q.speed) throw new Error('missing_fields');
-        const newProg = generateProgram();
-        if(!newProg || !newProg.weeks || newProg.weeks.length === 0) throw new Error('empty_prog');
-        newProg.generatorVersion = GENERATOR_VERSION;
-        saveProg(newProg);
-        PROG = newProg;
-        const wasUpdated = payload.prog.generatorVersion !== GENERATOR_VERSION;
-        renderPlan(newProg);showScreen('screen-plan');toast(wasUpdated ? '🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓' : 'Chargé ✓');
-      } catch(e) {
-        renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
+      // Si le fichier est un export natif de l'app (generatorVersion présent), regénérer pour MAJ
+      // Si c'est un programme externe/importé manuellement (pas de generatorVersion), utiliser tel quel
+      const isNativeExport = !!payload.prog.generatorVersion;
+      if(isNativeExport){
+        try {
+          restoreQFromSaved(PROG);
+          if(!Q.dist || !Q.raceDate || !Q.speed) throw new Error('missing_fields');
+          const newProg = generateProgram();
+          if(!newProg || !newProg.weeks || newProg.weeks.length === 0) throw new Error('empty_prog');
+          newProg.generatorVersion = GENERATOR_VERSION;
+          saveProg(newProg);
+          PROG = newProg;
+          const wasUpdated = payload.prog.generatorVersion !== GENERATOR_VERSION;
+          saveNewProgToLibrary(PROG);
+          renderPlan(newProg);showScreen('screen-plan');toast(wasUpdated ? '🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓' : 'Chargé ✓');
+        } catch(e) {
+          saveNewProgToLibrary(PROG);
+          renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
+        }
+      } else {
+        // Programme externe : conserver tel quel, ne pas regénérer
+        saveNewProgToLibrary(PROG);
+        renderPlan(PROG);showScreen('screen-plan');toast('Programme importé ✓');
       }
     }catch(err){alert('Fichier invalide.');}
   };reader.readAsText(file);
