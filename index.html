@@ -2060,7 +2060,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "123";
+const GENERATOR_VERSION = "119";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3834,7 +3834,7 @@ function generatePlan(){
 // Clé rp_active  : id du programme actif (affiché au démarrage)
 // Clé rp_star    : id du programme favori (lancé automatiquement)
 // =======================================================================
-function loadLibrary(){try{const lib=JSON.parse(localStorage.getItem('rp_library')||'[]');return lib.filter(function(e){return e&&e.id&&e.prog&&Array.isArray(e.prog.weeks)&&e.prog.weeks.length>0;});}catch(e){return[];}}
+function loadLibrary(){try{return JSON.parse(localStorage.getItem('rp_library')||'[]');}catch(e){return[];}}
 function saveLibrary(lib){try{localStorage.setItem('rp_library',JSON.stringify(lib));}catch(e){}}
 function getActiveId(){try{return localStorage.getItem('rp_active')||null;}catch(e){return null;}}
 function setActiveId(id){try{if(id)localStorage.setItem('rp_active',id);else localStorage.removeItem('rp_active');}catch(e){}}
@@ -7557,7 +7557,6 @@ ${weeksHtml}
   } // fin if(false)
 }
 
-
 // ─── Hydratation programmes externes ────────────────────────────────────────
 // Convertit les séances desc+dur d'un programme externe en steps structurés
 // avec plages de vitesse issues des zones Z, pour que Timeline et voix fonctionnent.
@@ -7849,14 +7848,14 @@ function openPartialQuestionnaire(saved, missingFields){
   // Programme favori défini → lancer directement
   if(starId){
     var starEntry = lib.find(function(e){ return e.id === starId; });
-    if(starEntry && starEntry.prog && starEntry.prog.weeks && starEntry.prog.weeks.length > 0){
+    if(starEntry && starEntry.prog && starEntry.prog.weeks){
       PROG = starEntry.prog;
       DONE = starEntry.done || {};
       TRAIN_DATA = starEntry.train || {};
       RACE_HISTORY = starEntry.history || [];
       setActiveId(starId);
-      // Mise à jour version si nécessaire (ne jamais régénérer les programmes externes sans generatorVersion)
-      if(PROG.generatorVersion && PROG.generatorVersion !== GENERATOR_VERSION){
+      // Mise à jour version si nécessaire
+      if(PROG.generatorVersion !== GENERATOR_VERSION){
         try {
           restoreQFromSaved(PROG);
           if(Q.dist && Q.raceDate && Q.speed){
@@ -7871,18 +7870,13 @@ function openPartialQuestionnaire(saved, missingFields){
           }
         } catch(e){}
       }
-      try {
-        renderPlan(PROG);
-        showScreen('screen-plan');
-        return;
-      } catch(e) {
-        console.error('init renderPlan error:', e);
-        // Programme corrompu → tomber sur la Home
-      }
+      renderPlan(PROG);
+      showScreen('screen-plan');
+      return;
     }
   }
 
-  // Pas de favori ou programme invalide → afficher la Home
+  // Pas de favori → afficher la Home
   renderHome();
   showScreen('screen-home');
   return;
