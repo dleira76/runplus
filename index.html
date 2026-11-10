@@ -900,7 +900,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 
         <div class="q-field">
           <label class="q-label">📅 Date du test</label>
-          <input type="date" id="vmatest-date" class="q-input">
+          <input type="date" id="vmatest-date" class="q-input" onchange="_vmatestAutoSelectWeek(this.value)">
         </div>
 
         <div class="q-field">
@@ -2059,7 +2059,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "113";
+const GENERATOR_VERSION = "114";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -6414,9 +6414,23 @@ let _vtSessId    = null;
 
 function vtSpeed(palier){ return VT_START + (palier - 1) * VT_STEP; }
 
+function _vmatestAutoSelectWeek(dateISO){
+  if(!PROG||!dateISO) return;
+  const sel=document.getElementById('vmatest-week');
+  // Chercher la semaine dont la plage contient la date
+  const wk=PROG.weeks.find(w=>w.dateStart&&w.dateEnd&&dateISO>=w.dateStart&&dateISO<=w.dateEnd);
+  if(wk){ sel.value=wk.num; return; }
+  // Sinon : semaine avec dateStart la plus proche AVANT la date
+  const before=PROG.weeks.filter(w=>w.dateStart&&w.dateStart<=dateISO);
+  if(before.length){ sel.value=before[before.length-1].num; return; }
+  // Sinon : première semaine
+  if(PROG.weeks.length) sel.value=PROG.weeks[0].num;
+}
+
 function openAddVmaTest(){
   if(!PROG) return;
-  document.getElementById('vmatest-date').value=new Date().toISOString().slice(0,10);
+  const todayISO=new Date().toLocaleDateString('sv');
+  document.getElementById('vmatest-date').value=todayISO;
   const sel=document.getElementById('vmatest-week');
   sel.innerHTML='';
   PROG.weeks.forEach(wk=>{
@@ -6425,6 +6439,7 @@ function openAddVmaTest(){
     opt.textContent=`Semaine ${wk.num} (${wk.dateStart||'—'})`;
     sel.appendChild(opt);
   });
+  _vmatestAutoSelectWeek(todayISO);
   updateVmatestProto();
   document.getElementById('vmatest-err').style.display='none';
   _showVmatestView('plan');
