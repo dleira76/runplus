@@ -2090,7 +2090,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "124";
+const GENERATOR_VERSION = "125";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -7882,9 +7882,9 @@ function loadFile(e){
       saveProg(PROG);saveDone();saveTrain();saveRaceHistory();
       // Restaurer intermediateRace dans Q
       if(PROG.intermediateRace) Q.intermediateRace=PROG.intermediateRace;
-      // Si le fichier est un export natif de l'app (generatorVersion présent), regénérer pour MAJ
-      // Si c'est un programme externe/importé manuellement (pas de generatorVersion), utiliser tel quel
-      const isNativeExport = !!payload.prog.generatorVersion;
+      // Si le fichier est un export natif de l'app (generatorVersion présent ET pas de _source manuel), regénérer pour MAJ
+      // Si c'est un programme externe/importé manuellement (pas de generatorVersion, ou _source présent), utiliser tel quel
+      const isNativeExport = !!payload.prog.generatorVersion && !payload.prog._source;
       if(isNativeExport){
         try {
           restoreQFromSaved(PROG);
@@ -7896,11 +7896,11 @@ function loadFile(e){
           PROG = newProg;
           const wasUpdated = payload.prog.generatorVersion !== GENERATOR_VERSION;
           saveNewProgToLibrary(PROG);
-          var aid1=getActiveId();if(aid1)setStarId(aid1);
+          var aid1=getActiveId();setStarId(aid1);
           renderPlan(newProg);showScreen('screen-plan');toast(wasUpdated ? '🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓' : 'Chargé ✓');
         } catch(e) {
           saveNewProgToLibrary(PROG);
-          var aid2=getActiveId();if(aid2)setStarId(aid2);
+          var aid2=getActiveId();setStarId(aid2);
           renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
         }
       } else {
@@ -7908,7 +7908,7 @@ function loadFile(e){
         PROG = _hydrateExternalProg(PROG);
         saveProg(PROG);
         try { saveNewProgToLibrary(PROG); } catch(e2){ console.error('saveNewProgToLibrary error:',e2); }
-        var aid3=getActiveId();if(aid3)setStarId(aid3);
+        var aid3=getActiveId();setStarId(aid3);
         try { renderPlan(PROG); } catch(e2){ console.error('renderPlan error:',e2); alert('Erreur rendu : '+e2.message); return; }
         showScreen('screen-plan');toast('Programme importé ✓');
       }
