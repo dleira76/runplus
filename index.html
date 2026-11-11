@@ -148,6 +148,19 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .btn-hdr-add:hover{background:var(--accent);color:#fff}
 .btn-hdr-vma{background:transparent;border:1.5px solid #6b35b0;color:#6b35b0;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
 .btn-hdr-vma:hover{background:#6b35b0;color:#fff}
+/* Bouton Reset programme — orange */
+.btn-hdr-reset{background:transparent;border:1.5px solid #e67e22;color:#e67e22;padding:6px 11px;border-radius:8px;font-size:12.5px;font-weight:700;font-family:var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;line-height:1.3;display:inline-flex;align-items:center;gap:5px}
+.btn-hdr-reset:hover{background:#e67e22;color:#fff}
+/* Modal Reset */
+#resetOverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px}
+#resetOverlay.open{display:flex}
+#resetOverlay:not(.open){display:none}
+.reset-modal{background:var(--surface);border-radius:16px;padding:24px 20px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.18)}
+.reset-modal h3{font-size:18px;font-weight:800;color:var(--fg);margin:0 0 10px}
+.reset-modal p{font-size:13.5px;color:var(--fg-muted);line-height:1.55;margin:0 0 20px}
+.reset-modal-btns{display:flex;gap:10px;justify-content:flex-end}
+.reset-cancel-btn{background:transparent;border:1.5px solid var(--border);color:var(--fg-muted);padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer}
+.reset-confirm-btn{background:#e67e22;border:1.5px solid #e67e22;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;font-family:var(--font);cursor:pointer}
 /* Switches home */
 .home-switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid var(--border)}
 .home-switch-label{font-size:13px;color:var(--fg-muted)}
@@ -1179,9 +1192,23 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <div class="plan-hdr-group">
         <button class="btn-hdr-add" onclick="openAddRun()" title="Ajouter une course réalisée">+ Course</button>
         <button class="btn-hdr-vma" onclick="openAddVmaTest()" title="Planifier ou lancer un test VMA">🧪 Test VMA</button>
+        <button class="btn-hdr-reset" onclick="openResetModal()" title="Remettre le programme à zéro (semaine 1) en conservant les courses sous forme de courses libres">↺ Reset</button>
       </div>
     </div>
     <input type="file" id="inp-load-file" accept=".runplan,.json" style="display:none" onchange="loadFile(event)">
+  </div>
+
+  <!-- Modal Reset programme -->
+  <div id="resetOverlay" onclick="if(event.target===this)closeResetModal()">
+    <div class="reset-modal">
+      <h3>↺ Remettre à zéro ?</h3>
+      <p>Le programme repart de la <strong>semaine 1, séance 1</strong>.<br>
+      Toutes les courses déjà enregistrées sont <strong>conservées sous forme de courses libres</strong> et restent visibles dans le graphique de progression.</p>
+      <div class="reset-modal-btns">
+        <button class="reset-cancel-btn" onclick="closeResetModal()">Annuler</button>
+        <button class="reset-confirm-btn" onclick="confirmReset()">Remettre à zéro</button>
+      </div>
+    </div>
   </div>
 
   <div class="zones-bar" id="zonesBar"></div>
@@ -2060,7 +2087,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "121";
+const GENERATOR_VERSION = "122";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4063,6 +4090,76 @@ function saveNewProgToLibrary(p){
 
   saveLibrary(lib);
   DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
+}
+
+// =======================================================================
+// RESET PROGRAMME
+// =======================================================================
+function openResetModal(){ document.getElementById('resetOverlay').classList.add('open'); }
+function closeResetModal(){ document.getElementById('resetOverlay').classList.remove('open'); }
+
+function confirmReset(){
+  closeResetModal();
+  if(!PROG || !PROG.weeks) return;
+
+  // Recharger les données fraîches
+  TRAIN_DATA = loadTrain();
+  DONE = loadDone();
+
+  // Construire un nouveau TRAIN_DATA ne contenant QUE les courses libres
+  // (entrées free_ ou marquées free:true) + convertir les séances planifiées faites en courses libres
+  var newTrain = {};
+
+  // 1. Conserver toutes les entrées déjà libres (free_ ou free:true)
+  Object.entries(TRAIN_DATA).forEach(function(kv){
+    var id = kv[0], td = kv[1];
+    if(!td) return;
+    if(id.startsWith('free_') || td.free){
+      newTrain[id] = Object.assign({}, td, {free: true});
+    }
+  });
+
+  // 2. Convertir chaque séance planifiée complétée en course libre
+  (PROG.weeks || []).forEach(function(wk){
+    (wk.sessions || []).forEach(function(sess){
+      var isDone = DONE[sess.id] || !!(TRAIN_DATA[sess.id+'__done']);
+      var td = TRAIN_DATA[sess.id] || TRAIN_DATA[sess.id+'__done'] || null;
+      if(!isDone && !td) return; // séance pas faite du tout
+      if(!isDone && td && !td.km) return; // entrée vide sans km utile
+
+      // Récupérer les données d'entraînement
+      var trainEntry = TRAIN_DATA[sess.id+'__done'] || TRAIN_DATA[sess.id] || {};
+      var km = parseFloat(trainEntry.km) || 0;
+      var date = trainEntry.date || (wk.dateEnd ? wk.dateEnd.slice(0,10) : new Date().toISOString().slice(0,10));
+
+      // Créer un ID unique pour la course libre
+      var baseId = 'free_' + date.replace(/-/g,'');
+      var freeId = baseId;
+      var n = 1;
+      while(newTrain[freeId] && n < 999){ freeId = baseId + '_' + n; n++; }
+
+      var entry = { free: true, date: date };
+      if(km > 0) entry.km = km.toFixed(1);
+      if(trainEntry.pace) entry.pace = trainEntry.pace;
+      if(trainEntry.duration) entry.duration = trainEntry.duration;
+      // Mémoriser la provenance (label affiché dans le graphique)
+      var sessLabel = (sess.title || sess.label || sess.type || '');
+      if(sessLabel) entry.note = 'S' + wk.num + ' — ' + sessLabel;
+      newTrain[freeId] = entry;
+    });
+  });
+
+  // 3. Appliquer : vider DONE, remplacer TRAIN_DATA par les courses libres
+  DONE = {};
+  TRAIN_DATA = newTrain;
+  RACE_HISTORY = loadRaceHistory(); // conserver l'historique de courses
+
+  saveDone();
+  saveTrain();
+  syncActiveToLibrary();
+
+  renderPlan(PROG);
+  toast('Programme remis à zéro ✓ — courses conservées sous forme de courses libres');
 }
 
 // =======================================================================
