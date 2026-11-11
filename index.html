@@ -1204,6 +1204,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <h3>↺ Remettre à zéro ?</h3>
       <p>Le programme repart de la <strong>semaine 1, séance 1</strong>.<br>
       Toutes les courses déjà enregistrées sont <strong>conservées sous forme de courses libres</strong> et restent visibles dans le graphique de progression.</p>
+      <label style="display:block;font-size:13px;font-weight:700;color:var(--fg);margin-bottom:6px">Date de démarrage de la semaine 1</label>
+      <input type="date" id="inp-reset-startdate" oninput="_updateResetWeeksHint()" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--fg);margin-bottom:6px">
+      <div id="reset-weeks-hint" style="font-size:12px;color:var(--fg-muted);margin-bottom:16px"></div>
       <div class="reset-modal-btns">
         <button class="reset-cancel-btn" onclick="closeResetModal()">Annuler</button>
         <button class="reset-confirm-btn" onclick="confirmReset()">Remettre à zéro</button>
@@ -2087,7 +2090,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "122";
+const GENERATOR_VERSION = "123";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4095,12 +4098,39 @@ function saveNewProgToLibrary(p){
 // =======================================================================
 // RESET PROGRAMME
 // =======================================================================
-function openResetModal(){ document.getElementById('resetOverlay').classList.add('open'); }
+function openResetModal(){
+  // Pré-remplir avec le lundi suivant (ou lundi actuel si on est lundi)
+  var d = new Date();
+  var day = d.getDay(); // 0=dim, 1=lun…
+  var daysToNextMon = day === 1 ? 0 : (day === 0 ? 1 : 8 - day);
+  d.setDate(d.getDate() + daysToNextMon);
+  var nextMonday = d.toISOString().slice(0,10);
+  var inp = document.getElementById('inp-reset-startdate');
+  inp.value = nextMonday;
+  inp.min = new Date().toISOString().slice(0,10);
+  _updateResetWeeksHint();
+  document.getElementById('resetOverlay').classList.add('open');
+  setTimeout(function(){ inp.focus(); }, 50);
+}
 function closeResetModal(){ document.getElementById('resetOverlay').classList.remove('open'); }
+function _updateResetWeeksHint(){
+  var sv = document.getElementById('inp-reset-startdate').value;
+  var hint = document.getElementById('reset-weeks-hint');
+  if(!sv || !PROG || !PROG.raceDate){ hint.textContent=''; return; }
+  var start = new Date(sv+'T12:00:00');
+  var race = new Date(PROG.raceDate+'T12:00:00');
+  var diffW = Math.round((race - start) / (7*864e5));
+  hint.textContent = diffW > 0 ? diffW + ' semaine' + (diffW>1?'s':'') + ' jusqu\'à la course' : (diffW <= 0 ? '⚠ Date après la course' : '');
+  hint.style.color = diffW < 4 ? '#c0392b' : 'var(--fg-muted)';
+}
 
 function confirmReset(){
-  closeResetModal();
   if(!PROG || !PROG.weeks) return;
+
+  var newStartDate = document.getElementById('inp-reset-startdate').value;
+  if(!newStartDate){ toast('⚠ Choisis une date de démarrage'); return; }
+
+  closeResetModal();
 
   // Recharger les données fraîches
   TRAIN_DATA = loadTrain();
@@ -4124,15 +4154,13 @@ function confirmReset(){
     (wk.sessions || []).forEach(function(sess){
       var isDone = DONE[sess.id] || !!(TRAIN_DATA[sess.id+'__done']);
       var td = TRAIN_DATA[sess.id] || TRAIN_DATA[sess.id+'__done'] || null;
-      if(!isDone && !td) return; // séance pas faite du tout
-      if(!isDone && td && !td.km) return; // entrée vide sans km utile
+      if(!isDone && !td) return;
+      if(!isDone && td && !td.km) return;
 
-      // Récupérer les données d'entraînement
       var trainEntry = TRAIN_DATA[sess.id+'__done'] || TRAIN_DATA[sess.id] || {};
       var km = parseFloat(trainEntry.km) || 0;
       var date = trainEntry.date || (wk.dateEnd ? wk.dateEnd.slice(0,10) : new Date().toISOString().slice(0,10));
 
-      // Créer un ID unique pour la course libre
       var baseId = 'free_' + date.replace(/-/g,'');
       var freeId = baseId;
       var n = 1;
@@ -4142,24 +4170,62 @@ function confirmReset(){
       if(km > 0) entry.km = km.toFixed(1);
       if(trainEntry.pace) entry.pace = trainEntry.pace;
       if(trainEntry.duration) entry.duration = trainEntry.duration;
-      // Mémoriser la provenance (label affiché dans le graphique)
       var sessLabel = (sess.title || sess.label || sess.type || '');
       if(sessLabel) entry.note = 'S' + wk.num + ' — ' + sessLabel;
       newTrain[freeId] = entry;
     });
   });
 
-  // 3. Appliquer : vider DONE, remplacer TRAIN_DATA par les courses libres
+  // 3. Vider DONE, remplacer TRAIN_DATA par les courses libres
   DONE = {};
   TRAIN_DATA = newTrain;
-  RACE_HISTORY = loadRaceHistory(); // conserver l'historique de courses
+  RACE_HISTORY = loadRaceHistory();
 
   saveDone();
   saveTrain();
-  syncActiveToLibrary();
 
-  renderPlan(PROG);
-  toast('Programme remis à zéro ✓ — courses conservées sous forme de courses libres');
+  // 4. Regénérer le programme avec le nouveau startDate, mêmes paramètres
+  var p = PROG;
+  Q.dist = p.dist; Q.profil = p.profil; Q.speed = p.speed;
+  Q.goalSec = p.goalSec; Q.goalTime = p.goalTime || fmtSec(p.goalSec||0);
+  Q.volume = p.volume; Q.days = p.days;
+  Q.raceDate = p.raceDate; Q.raceName = p.raceName;
+  Q.startDate = newStartDate;   // ← nouvelle date de démarrage
+  Q.cotes = p.cotes || 'non'; Q.injury = p.injury || 0;
+  Q.raceEvents = Array.isArray(p.raceEvents) ? p.raceEvents : [];
+  Q.intermediateRace = p.intermediateRace || null;
+  Q._goalConfirmed = true;
+
+  var newProg = generateProgram();
+  _reinjectVmaTestSessions(p, newProg, null, null);
+  PROG = newProg;
+  saveProg(newProg);
+
+  // Mettre à jour la librairie (prog uniquement, done/train déjà sauvegardés)
+  (function(){
+    var lib = loadLibrary();
+    var activeId = getActiveId();
+    if(activeId){
+      var idx = lib.findIndex(function(e){ return e.id === activeId; });
+      if(idx >= 0){
+        lib[idx].prog = newProg;
+        lib[idx].done = DONE;
+        lib[idx].train = TRAIN_DATA;
+        lib[idx].history = RACE_HISTORY;
+        saveLibrary(lib);
+        return;
+      }
+    }
+    var newId = 'prog_' + Date.now();
+    lib.unshift({ id: newId, prog: newProg, done: DONE, train: TRAIN_DATA, history: RACE_HISTORY });
+    saveLibrary(lib);
+    setActiveId(newId);
+  })();
+
+  Q._goalConfirmed = false;
+  renderPlan(newProg);
+  showScreen('screen-plan');
+  toast('Programme remis à zéro ✓ — courses conservées comme courses libres');
 }
 
 // =======================================================================
