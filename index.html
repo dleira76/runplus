@@ -1173,6 +1173,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <div class="plan-hdr-group">
         <button class="btn-hdr btn-hdr-edit" onclick="editPlan()" title="Modifier les paramètres du programme">✏️ Modifier</button>
         <button class="btn-hdr btn-hdr-regen" onclick="regenPlan()" title="Regénérer le programme en conservant tous les paramètres">🔄 Regénérer</button>
+        <button class="btn-hdr-reset" onclick="openResetModal()" title="Remettre le programme à zéro (semaine 1) en conservant les courses sous forme de courses libres">↺ Reset</button>
       </div>
       <div class="plan-hdr-sep"></div>
       <!-- Groupe 2 : Fichier -->
@@ -1192,7 +1193,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
       <div class="plan-hdr-group">
         <button class="btn-hdr-add" onclick="openAddRun()" title="Ajouter une course réalisée">+ Course</button>
         <button class="btn-hdr-vma" onclick="openAddVmaTest()" title="Planifier ou lancer un test VMA">🧪 Test VMA</button>
-        <button class="btn-hdr-reset" onclick="openResetModal()" title="Remettre le programme à zéro (semaine 1) en conservant les courses sous forme de courses libres">↺ Reset</button>
       </div>
     </div>
     <input type="file" id="inp-load-file" accept=".runplan,.json" style="display:none" onchange="loadFile(event)">
@@ -2090,7 +2090,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "123";
+const GENERATOR_VERSION = "124";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
