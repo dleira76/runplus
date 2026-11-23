@@ -2090,7 +2090,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "126";
+const GENERATOR_VERSION = "127";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5605,7 +5605,12 @@ function voiceText(step){
   // Lire X/Y comme "X sur Y"
   const labelSpoken = label.replace(/(\d+)\/(\d+)/g,'$1 sur $2').replace(/#(\d+)/g,'numéro $1');
   // Extraire les vitesses km/h depuis le texte brut pour la voix
-  const speedMatches = raw.match(/([\d.]+)\s*km\/h/g)||[];
+  let speedMatches = raw.match(/([\d.]+)\s*km\/h/g)||[];
+  // Fallback : si aucune vitesse dans txt, utiliser step.s
+  if(!speedMatches.length && step.s){
+    const m = step.s.match(/([\d.]+)\s*km\/h/);
+    if(m) speedMatches = [step.s];
+  }
   let speedTxt = '';
   if(speedMatches.length>=2){
     const v1=parseFloat(speedMatches[0]);
