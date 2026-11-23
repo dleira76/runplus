@@ -2090,7 +2090,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "125";
+const GENERATOR_VERSION = "126";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5761,7 +5761,12 @@ function stepLabel(s){
   // Convertir toutes les vitesses "X.X km/h" en "M:SS/km" dans le texte affiché
   return raw.replace(/([\d.]+)\s*km\/h/g, (_,v)=>fmtPace(parseFloat(v))+'/km');
 }
-function stepSpeed(s){ return s.s||s.speed||''; }
+function stepSpeed(s){
+  const raw = s.s||s.speed||'';
+  if(!raw) return '';
+  if(!PREF_PACE) return raw;
+  return raw.replace(/([\d.]+)\s*km\/h/g, (_,v) => fmtPace(parseFloat(v))+'/km');
+}
 function voiceTextRenfo(s){
   // Voix spécifique pour les exos renfo
   if(s.t==='renfo'&&s.exo){
