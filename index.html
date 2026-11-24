@@ -423,7 +423,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
 .tl-bar-seg.warm{background:#e8a730}.tl-bar-seg.speed{background:var(--accent)}.tl-bar-seg.tempo{background:#8b45c0}.tl-bar-seg.cool{background:#3d7be0}.tl-bar-seg.rest{background:#c0bdb5}
 /* TL list */
 .tl-list{overflow-y:auto;padding:6px 0 16px;flex:1}
-.tl-row{display:grid;grid-template-columns:88px 8px 1fr;gap:0 9px;align-items:start;padding:6px 15px;transition:background .1s;cursor:pointer;touch-action:manipulation;user-select:none}
+.tl-row{display:grid;grid-template-columns:88px 8px 1fr auto;gap:0 9px;align-items:start;padding:6px 15px;transition:background .1s;cursor:pointer;touch-action:manipulation;user-select:none}
+.tl-edit-btn{background:none;border:none;font-size:14px;padding:2px 4px;cursor:pointer;opacity:0.35;transition:opacity .15s;line-height:1;align-self:center;touch-action:manipulation}
+.tl-row:hover .tl-edit-btn,.tl-edit-btn:focus{opacity:0.8}
 .tl-row:hover{background:var(--bg)}
 .tl-row.tl-active{background:var(--accent-soft);border-radius:6px}
 .tl-row.tl-active .t-start{color:var(--accent)}
@@ -1339,6 +1341,29 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
   </div>
 </div>
 
+<!-- ══ EDIT STEP MODAL ════════════════════════════════════════════════════ -->
+<div class="train-overlay" id="editStepOverlay">
+  <div class="train-modal">
+    <h3>✏️ Modifier l'intervalle</h3>
+    <div class="train-sess" id="editStepLbl"></div>
+    <div class="train-fields">
+      <label class="train-lbl">Durée (minutes)
+        <input class="train-inp" type="number" id="editStepDur" min="0.1" max="300" step="0.5" placeholder="ex. 5">
+      </label>
+      <label class="train-lbl">Vitesse (km/h)
+        <input class="train-inp" type="number" id="editStepSpeed" min="1" max="30" step="0.1" placeholder="ex. 10.6">
+      </label>
+      <label class="train-lbl">Libellé (court)
+        <input class="train-inp" type="text" id="editStepLabel" maxlength="80" placeholder="ex. 2 km EF · échauffement">
+      </label>
+    </div>
+    <div class="train-actions">
+      <button class="t-btn-cancel" onclick="closeEditStep()">Annuler</button>
+      <button class="t-btn-ok" onclick="saveEditStep()">Appliquer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ DONE MODAL (séance effectuée) ═════════════════════════════════════ -->
 <div class="train-overlay" id="doneOverlay">
   <div class="train-modal">
@@ -2090,7 +2115,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "127";
+const GENERATOR_VERSION = "128";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5831,7 +5856,8 @@ function renderTLList(activeIdx){
       const sCls=stepCls(s);
       row.innerHTML=`<div class="tl-times"><span class="t-start">${fmtSec(s.startSec)}</span>${dLbl?`<br><span style="font-size:10px">${dLbl}</span>`:''}<br>${s.d?fmtSec(s.endSec):''}</div>
       <div class="tl-dot-col"><div class="tl-dot ${sCls}"></div>${i<TL_STEPS.length-1?`<div class="tl-line ${sCls}"></div>`:''}</div>
-      <div><div class="tl-label">${stepLabel(s)}</div><div class="tl-speed">${stepSpeed(s)}</div></div>`;
+      <div style="flex:1;min-width:0"><div class="tl-label">${stepLabel(s)}</div><div class="tl-speed">${stepSpeed(s)}</div></div>
+      <button class="tl-edit-btn" onclick="event.stopPropagation();openEditStep(${i})" title="Modifier">✏️</button>`;
       list.appendChild(row);
     }
   });
@@ -7445,6 +7471,50 @@ function openTrainModal(idx){
   document.getElementById('trainOverlay').classList.add('open');
 }
 function closeTrainModal(){document.getElementById('trainOverlay').classList.remove('open');}
+
+// ── Édition intervalle timeline ──
+let _editIdx=-1;
+function openEditStep(idx){
+  _editIdx=idx;
+  const s=TL_STEPS[idx];
+  document.getElementById('editStepLbl').textContent=`Intervalle ${idx+1} / ${TL_STEPS.length}`;
+  document.getElementById('editStepDur').value=s.d||'';
+  const spd=(s.s||s.speed||'').match(/([\d.]+)\s*km\/h/);
+  document.getElementById('editStepSpeed').value=spd?spd[1]:'';
+  document.getElementById('editStepLabel').value=s.l||s.txt||'';
+  document.getElementById('editStepOverlay').classList.add('open');
+}
+function closeEditStep(){document.getElementById('editStepOverlay').classList.remove('open');}
+function saveEditStep(){
+  if(_editIdx<0||!TL_SESS)return;
+  const s=TL_STEPS[_editIdx];
+  const newDur=parseFloat(document.getElementById('editStepDur').value);
+  const newSpd=parseFloat(document.getElementById('editStepSpeed').value);
+  const newLbl=document.getElementById('editStepLabel').value.trim();
+  if(newDur>0) s.d=newDur;
+  if(newSpd>0){
+    s.s=newSpd.toFixed(1)+' km/h';
+    // Mettre à jour txt pour que la voix puisse lire la vitesse
+    if(newLbl){
+      // Reconstruire txt avec vitesse intégrée
+      const baseLabel=newLbl.split(/\s*[·\-–]\s*/)[0].trim();
+      s.txt=newLbl.includes('km/h')?newLbl:newLbl+' · '+newSpd.toFixed(1)+' km/h';
+    } else if(s.txt){
+      // Remplacer la vitesse dans le txt existant
+      s.txt=s.txt.replace(/([\d.]+)\s*km\/h/, newSpd.toFixed(1)+' km/h');
+    }
+  }
+  if(newLbl) s.txt=newLbl+(newSpd>0&&!newLbl.includes('km/h')?' · '+newSpd.toFixed(1)+' km/h':newSpd<=0&&s.s?' · '+(s.s):'');
+  // Recalculer startSec / endSec
+  let cum=0;
+  TL_STEPS.forEach(st=>{st.startSec=cum;cum+=(st.d||0)*60;st.endSec=cum;});
+  TL_TOTAL=cum;
+  document.getElementById('tlTotal').textContent='Durée : '+Math.round(TL_TOTAL/60)+' min';
+  renderBar(); renderTLList(_curStep>=0?_curStep:-1); updateTLStats();
+  // Relancer preload voix avec les nouveaux textes
+  if(_voiceEnabled) preloadVoice(TL_STEPS);
+  closeEditStep();
+}
 function saveTrainData(){
   if(!TL_SESS)return;
   const km=parseFloat(document.getElementById('trainKm').value);
