@@ -2115,7 +2115,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "128";
+const GENERATOR_VERSION = "129";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5852,7 +5852,16 @@ function renderTLList(activeIdx){
       row.addEventListener('pointerup',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
       row.addEventListener('pointercancel',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
       const dMin=s.d||0;
-      const dLbl=dMin>0?(dMin<1?Math.round(dMin*60)+'s':dMin>=60?Math.floor(dMin/60)+'h'+String(dMin%60).padStart(2,'0'):dMin+' min'):'';
+      const dLbl=(function(m){
+        if(!m) return '';
+        const totalSec=Math.round(m*60);
+        if(totalSec<60) return totalSec+'s';
+        const h=Math.floor(totalSec/3600);
+        const mm=Math.floor((totalSec%3600)/60);
+        const ss=totalSec%60;
+        if(h>0) return h+'h'+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+        return mm+':'+String(ss).padStart(2,'0');
+      })(dMin);
       const sCls=stepCls(s);
       row.innerHTML=`<div class="tl-times"><span class="t-start">${fmtSec(s.startSec)}</span>${dLbl?`<br><span style="font-size:10px">${dLbl}</span>`:''}<br>${s.d?fmtSec(s.endSec):''}</div>
       <div class="tl-dot-col"><div class="tl-dot ${sCls}"></div>${i<TL_STEPS.length-1?`<div class="tl-line ${sCls}"></div>`:''}</div>
