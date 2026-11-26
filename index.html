@@ -2147,7 +2147,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.4";
+const GENERATOR_VERSION = "130.5";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -5716,11 +5716,16 @@ function checkEncourage(elSec){
 
 function durToSpeech(min){
   if(!min||min<=0) return '';
-  if(min<1) return Math.round(min*60)+' secondes';
-  if(min===1) return '1 minute';
-  if(min<60) return min+' minutes';
-  const h=Math.floor(min/60), m=min%60;
-  return h+'h'+(m?m+'min':'');
+  const totalSec = Math.round(min * 60);
+  if(totalSec < 60) return totalSec + ' secondes';
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  let out = '';
+  if(h > 0) out += h === 1 ? '1 heure' : h + ' heures';
+  if(m > 0) out += (out ? ' ' : '') + (m === 1 ? '1 minute' : m + ' minutes');
+  if(s > 0) out += (out ? ' ' : '') + (s === 1 ? '1 seconde' : s + ' secondes');
+  return out;
 }
 function voiceText(step){
   // Annonce brève : premier segment du texte + vitesse(s) + durée
