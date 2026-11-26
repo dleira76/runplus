@@ -1604,7 +1604,15 @@ function selectChip(el,group){
   else if(group==='profil') QSel[1]=true;
   else if(group==='speed'){QSel[2]=true;updateVMAPreview();}
   else if(group==='volume') QSel[4]=true;
-  else if(group==='days') QSel[5]=true;
+  else if(group==='days'){
+    QSel[5]=true;
+    // Avertissement immédiat si jours insuffisants pour la distance choisie
+    const days=parseFloat(raw);
+    const dist=Q.dist||0;
+    if(dist>=42&&days<3) showQWarn(5,'⚠️ 2 jours/semaine est insuffisant pour un marathon — Pfitzinger recommande 4 séances minimum. Le plan généré sera limité, mais c\'est ton choix.');
+    else if(dist>=21&&days<2) showQWarn(5,'⚠️ 1 jour/semaine est trop peu pour préparer un semi-marathon sérieusement.');
+    else clearQWarn(5);
+  }
   else if(group==='cotes') QSel['cotes']=true;
   else if(group==='injury') QSel['injury']=true;
 }
@@ -1921,6 +1929,17 @@ function qNext(step){
   }
   if(step===4&&!QSel[4]){showQError(4,'👆 Indique ton volume actuel');return;}
   if(step===5&&!QSel[5]){showQError(5,'👆 Choisis le nombre de jours disponibles');return;}
+  // Fix v130 — avertissement si trop peu de jours pour la distance choisie
+  // On n'empêche pas, mais on informe clairement (l'utilisateur reste maître de ses choix)
+  if(step===5&&QSel[5]){
+    const days=parseInt(QSel[5]);
+    const dist=Q.dist||0;
+    let warnMsg='';
+    if(dist>=42&&days<3) warnMsg='⚠️ 2 jours/semaine est insuffisant pour un marathon — Pfitzinger recommande 4 séances minimum. Le plan généré sera limité, mais c\'est ton choix.';
+    else if(dist>=21&&days<2) warnMsg='⚠️ 1 jour/semaine est trop peu pour préparer un semi-marathon sérieusement. Le plan généré sera très basique.';
+    if(warnMsg) showQWarn(5, warnMsg);
+    else clearQWarn(5);
+  }
   if(step===6){
     const d=document.getElementById('inp-racedate').value;
     if(!d){showQError(6,'📅 Choisis une date de course');return;}
@@ -1980,6 +1999,19 @@ function showQError(step, msg){
   errEl.style.display='block';
 }
 function clearQError(step){const e=document.getElementById('qerr'+step);if(e)e.style.display='none';}
+function showQWarn(step, msg){
+  let el=document.getElementById('qwarn'+step);
+  if(!el){
+    el=document.createElement('div');
+    el.id='qwarn'+step;
+    el.style.cssText='background:#fff8e1;color:#b7700a;font-size:13px;font-weight:600;padding:9px 12px;border-radius:8px;margin-top:10px;border-left:3px solid #f0a500;';
+    const btn=document.querySelector('#qs'+step+' .btn-primary');
+    if(btn) btn.before(el);
+  }
+  el.textContent=msg;
+  el.style.display='block';
+}
+function clearQWarn(step){const e=document.getElementById('qwarn'+step);if(e)e.style.display='none';}
 function qBack(step){
   document.getElementById('qs'+step).classList.remove('active');
   document.getElementById('qs'+(step-1)).classList.add('active');
@@ -2115,7 +2147,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "129";
+const GENERATOR_VERSION = "130.3";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2629,13 +2661,20 @@ function calcZones(vma, allureCible, dist) {
 //    Principes: Pfitzinger (phases structurées), Daniels (périodisation)
 //    P1 = base aérobie, P2 = développement, P3 = spécifique, Taper
 // -----------------------------------------------------------------------
-function calcPhaseDurations(nWeeks, dist, index) {
+function calcPhaseDurations(nWeeks, dist, index, allureCible) {
   // Taper: fixe par distance (Mujika/Padilla: 2-3 semaines)
+  // Fix v130 — Marathon lent (allure < 10.5 km/h = objectif > 4h00) : taper 3 semaines
+  // Pfitzinger: les coureurs > 4h ont besoin de plus de récupération → 3 semaines d'affûtage
+  // Les coureurs < 4h (élites/confirmés) peuvent se contenter de 2 semaines
   let taperW;
   if (dist <= 5)       taperW = 1;
   else if (dist <= 10) taperW = 2;
   else if (dist <= 21.2) taperW = 2;
-  else                 taperW = 3; // marathon
+  else {
+    // Marathon : 3 semaines si coureur lent (>4h = allure cible < 10.5 km/h)
+    const isSlowMarathoner = !allureCible || allureCible < 10.5;
+    taperW = isSlowMarathoner ? 3 : 2;
+  }
 
   const workW = nWeeks - 1; // dernière semaine = course
   const trainW = workW - taperW;
@@ -2817,8 +2856,9 @@ function calcPhasePosition(wIdx, cfg) {
 //    Plafond: débutant min(2h30, 35%vol), intermédiaire min(3h, 35%vol)
 //    SL blocs: 3 blocs max, ≤ 40% durée SL
 // -----------------------------------------------------------------------
-function longRunSchedule(nWeeks, dist) {
+function longRunSchedule(nWeeks, dist, goalSec) {
   // Durée SL en minutes par semaine selon la distance
+  // goalSec (optionnel) : temps de course cible en secondes — sert au cap 85%
   const sched = [];
 
   // Durée SL de base et pic selon distance
@@ -2830,9 +2870,22 @@ function longRunSchedule(nWeeks, dist) {
   else if (dist <= 21.2) { basMin = 60;  peakMin = 110; }
   else                   { basMin = 80;  peakMin = 160; } // marathon : 80min → 2h40
 
+  // Fix v130 — Cap SL à 85% du temps de course cible (Pfitzinger/Daniels)
+  // Principe : la SL ne doit jamais dépasser 85% de la durée de la compétition cible
+  // Ex: 4h15 marathon = 255 min → cap = 255 × 0.85 = 216 min  (jamais atteint pour marathon)
+  // Ex: semi 2h = 120 min → cap = 102 min (réduit le pic de 110 à 102)
+  // Pour marathon (peakMin=160) le cap naturel est toujours supérieur → effet surtout semi/10km
+  if (goalSec > 0) {
+    const goalMin = goalSec / 60;
+    peakMin = Math.min(peakMin, Math.round(goalMin * 0.85));
+    // Garantir que peakMin reste au moins le basMin + un palier minimal
+    peakMin = Math.max(peakMin, basMin + 10);
+  }
+
   // v88 fix — éviter deux SL consécutives au pic (150+150min → 135+150min)
   // Pfitzinger: une seule sortie ultra-longue par bloc, puis légère décharge avant la suivante
   let prevSLMin = 0;
+  let prevNormalSLMin = 0; // Fix v130 — SL décharge ≤ SL semaine normale précédente
   for (let i = 0; i < nWeeks; i++) {
     if (i === nWeeks - 1) { sched.push(0); continue; }
 
@@ -2840,17 +2893,21 @@ function longRunSchedule(nWeeks, dist) {
 
     // Palier 2+1 : semaines de décharge à 75% du niveau atteint
     if (isDechargeWeek(i, nWeeks - 1, null)) {
-      const dur = Math.round(basMin + (peakMin - basMin) * Math.max(0, progress - 0.1));
+      let dur = Math.round(basMin + (peakMin - basMin) * Math.max(0, progress - 0.1));
+      // Fix v130 — SL décharge ne peut pas dépasser la SL de la semaine normale précédente
+      // (corrige S8 4h15 original: SL décharge = 20km alors que pic normal était 18km)
+      if (prevNormalSLMin > 0) dur = Math.min(dur, prevNormalSLMin);
       sched.push(dur);
       prevSLMin = dur;
     } else {
       const raw = basMin + (peakMin - basMin) * progress;
-      const minPeak = (dist >= 42 && progress >= 0.65) ? 150 : 0;
+      const minPeak = (dist >= 42 && progress >= 0.65) ? Math.min(150, peakMin) : 0;
       let dur = Math.max(minPeak, Math.round(raw));
       // Cap si SL précédente était déjà au pic (≥140min) : limiter à 135min max
       if (dist >= 42 && prevSLMin >= 140 && dur >= 150) dur = 135;
       sched.push(dur);
       prevSLMin = dur;
+      prevNormalSLMin = dur; // mémoriser pour cap décharge suivante
     }
   }
   return sched;
@@ -3669,6 +3726,51 @@ function fracTypeLabel(ft) {
 }
 
 // -----------------------------------------------------------------------
+// 9b. MERGE PLAN — préserve le passé, ne met à jour que le futur
+// -----------------------------------------------------------------------
+// mergePrograms(oldProg, newProg) → programme fusionné
+//   - Semaines dont dateEnd < aujourd'hui → conservées telles quelles depuis oldProg
+//   - Semaines futures → prises depuis newProg, réindexées en continuant les numéros
+//   - DONE et TRAIN_DATA ne sont pas touchés (indexés par sess.id dans des objets séparés)
+//   - Les IDs des semaines passées restent intacts → les DONE existants continuent à fonctionner
+//   - Les IDs des semaines futures du newProg sont réindexés pour éviter les collisions
+//
+// Cas d'usage : mise à jour de version automatique — l'utilisateur avait déjà commencé
+// à s'entraîner. Les séances cochées du passé doivent rester, seul le futur est recalculé.
+function mergePrograms(oldProg, newProg) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // Semaines passées : dateEnd < aujourd'hui (entièrement terminées)
+  const pastWeeks = (oldProg.weeks || []).filter(function(wk) {
+    return wk.dateEnd && wk.dateEnd < todayISO;
+  });
+
+  // Semaines futures du nouveau plan : celles dont dateStart >= aujourd'hui
+  // (ou dont dateEnd >= aujourd'hui — pour inclure la semaine en cours)
+  const futureWeeks = (newProg.weeks || []).filter(function(wk) {
+    return wk.dateEnd && wk.dateEnd >= todayISO;
+  });
+
+  // Réindexer les semaines futures pour que les numéros soient continus
+  // et que les IDs de sessions ne collisionnent pas avec les passées
+  const offset = pastWeeks.length; // les passées gardent num 1..N
+  const reindexed = futureWeeks.map(function(wk, i) {
+    const newNum = offset + i + 1;
+    const newSessions = (wk.sessions || []).map(function(sess, si) {
+      return Object.assign({}, sess, { id: 'w' + newNum + 's' + (si + 1) });
+    });
+    return Object.assign({}, wk, { num: newNum, sessions: newSessions });
+  });
+
+  // Plan fusionné : métadonnées du newProg, semaines = passées(old) + futures(new)
+  return Object.assign({}, newProg, {
+    weeks: pastWeeks.concat(reindexed),
+    _mergedAt: todayISO,
+    _pastWeeksKept: pastWeeks.length
+  });
+}
+
+// -----------------------------------------------------------------------
 // 10. FONCTION PRINCIPALE generateProgram()
 // -----------------------------------------------------------------------
 function generateProgram(){
@@ -3697,8 +3799,8 @@ function generateProgram(){
   })();
   const raceMonday = mondayOf(Q.raceDate);
   const nWeeks = Math.max(1, Math.round((raceMonday-progStart)/(7*864e5))+1);
-  const longSched = longRunSchedule(nWeeks, Q.dist);
-  const phaseConfig = calcPhaseDurations(nWeeks, Q.dist, index);
+  const longSched = longRunSchedule(nWeeks, Q.dist, gs); // Fix v130: passer goalSec pour cap 85%
+  const phaseConfig = calcPhaseDurations(nWeeks, Q.dist, index, allureCible); // Fix v130: taper adapté au niveau
   // v67 — calcVolumeSchedule connecté : volumes cibles réels par semaine
   const weekVols = calcVolumeSchedule(nWeeks, Q.volume||null, phaseConfig, Q.dist, index);
   // Course intermédiaire : priorité à la date explicite (Q.intermediateRace)
@@ -3746,9 +3848,11 @@ function generateProgram(){
       } else {
         // Semaine course test classique (allure réduite, pas une vraie course)
         // v68 fix S10→S11 : on conserve une SL courte (65% du volume normal) pour éviter la coupure
+        // Semaine test : structure adaptée au nombre de jours choisi par l'utilisateur (Q.days)
+        // La course préparatoire est la séance centrale ; les autres sessions remplissent les jours restants
         if(Q.days>=5) s.push({type:'recup',title:'Récupération active',steps:recupSteps(Z)});
-        s.push({type:'footing',title:'Footing endurance',steps:footingSteps(Z,40)});
-        if(Q.days>=3) s.push({type:'preprace',title:'Course préparatoire',steps:prepRaceSteps(Z,Q.dist,allureCible)});
+        if(Q.days>=2) s.push({type:'footing',title:'Footing endurance',steps:footingSteps(Z,40)});
+        s.push({type:'preprace',title:'Course préparatoire',steps:prepRaceSteps(Z,Q.dist,allureCible)});
         if(Q.days>=4) s.push({type:'footing',title:'Footing doux',steps:footingSteps(Z,30)});
         // SL réduite : 80% du volume prévu cette semaine — pont entre décharge et semaine suivante
         // borne : 55 min min (jamais trop court), 95 min max (semaine déjà chargée avec course test)
@@ -8109,7 +8213,7 @@ function openPartialQuestionnaire(saved, missingFields){
       TRAIN_DATA = starEntry.train || {};
       RACE_HISTORY = starEntry.history || [];
       setActiveId(starId);
-      // Mise à jour version si nécessaire
+      // Mise à jour version si nécessaire — merge : passé conservé, futur recalculé
       if(PROG.generatorVersion !== GENERATOR_VERSION){
         try {
           restoreQFromSaved(PROG);
@@ -8117,10 +8221,13 @@ function openPartialQuestionnaire(saved, missingFields){
             var newProg = generateProgram();
             if(newProg && newProg.weeks && newProg.weeks.length>0){
               newProg.generatorVersion = GENERATOR_VERSION;
-              PROG = newProg;
-              starEntry.prog = newProg;
+              var mergedProg = mergePrograms(PROG, newProg);
+              mergedProg.generatorVersion = GENERATOR_VERSION;
+              PROG = mergedProg;
+              starEntry.prog = mergedProg;
               saveLibrary(lib);
-              setTimeout(function(){ toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓'); }, 600);
+              var kept = mergedProg._pastWeeksKept || 0;
+              setTimeout(function(){ toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+(kept>0?' · '+kept+' sem. passées conservées':'')+' ✓'); }, 600);
             }
           }
         } catch(e){}
@@ -8151,14 +8258,17 @@ function openPartialQuestionnaire(saved, missingFields){
         if(!Q.dist || !Q.raceDate || !Q.speed) throw new Error('missing_fields');
         const newProg = generateProgram();
         if(!newProg || !newProg.weeks || newProg.weeks.length === 0) throw new Error('empty_prog');
-        // Succès : on sauvegarde et on supprime le backup
+        // Merge : conserver les semaines passées, remplacer les futures
         newProg.generatorVersion = GENERATOR_VERSION;
-        saveProg(newProg);
+        const mergedProg = mergePrograms(saved, newProg);
+        mergedProg.generatorVersion = GENERATOR_VERSION;
+        saveProg(mergedProg);
         try { localStorage.removeItem('rp_prog_backup'); } catch(e){}
-        PROG = newProg;
-        renderPlan(newProg);
+        PROG = mergedProg;
+        renderPlan(mergedProg);
         showScreen('screen-plan');
-        setTimeout(function(){ toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓'); }, 600);
+        const kept = mergedProg._pastWeeksKept || 0;
+        setTimeout(function(){ toast('🔄 Programme mis à jour v'+GENERATOR_VERSION+(kept>0?' · '+kept+' sem. passées conservées':'')+' ✓'); }, 600);
         return;
       } catch(e) {
         // Régénération échouée : restaurer le backup si disponible, sinon garder l'ancien
