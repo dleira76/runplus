@@ -2147,7 +2147,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.3";
+const GENERATOR_VERSION = "130.4";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -3065,7 +3065,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const effortMin = Math.max(1, Math.round(effortSec / 60));
       for (let r = 1; r <= reps; r++) {
         steps.push({ t: 'qual', d: effortMin, txt: `Répétition ${r}/${reps} · ${distM}m @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
-        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupMin}min footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
+        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${fmtDurMin(recupMin)} footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
       }
       break;
     }
@@ -3083,7 +3083,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const effortMin = Math.max(1, Math.round(effortSec / 60));
       for (let r = 1; r <= reps; r++) {
         steps.push({ t: 'qual', d: effortMin, txt: `Répétition ${r}/${reps} · ${distM}m @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
-        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${recupMin}min footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
+        if (r < reps) steps.push({ t: 'rest', d: recupMin, txt: `Récup ${fmtDurMin(recupMin)} footing · ${fmtSpeedRange(Z.z1.min,Z.z1.max)}` });
       }
       break;
     }
@@ -3119,7 +3119,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const rangeMin = 10; // progression dans la phase
       const tempoMin = Math.min(Math.round(baseMin + index * 5 + phasePos * rangeMin), 45);
       const pacePer = fmtPace(speed);
-      steps.push({ t: 'qual', d: tempoMin, txt: `Tempo seuil · ${tempoMin}min @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
+      steps.push({ t: 'qual', d: tempoMin, txt: `Tempo seuil · ${fmtDurMin(tempoMin)} @ ${(pctVma*100).toFixed(0)}%VMA · ${fmtSpeed(speed)} · ${pacePer}/km` });
       break;
     }
 
@@ -3130,7 +3130,7 @@ function buildFracSession(fracType, Z, vma, index, dist, phase, phasePos, allure
       const cappedMin = Math.min(Math.round(25 + index * 20 + phasePos * 15), dist <= 21.2 ? 50 : 70);
       const pacePer = fmtPace(speed);
       const label = useRacePace ? 'allure cible +2%' : `${Math.round(speed/vma*100)}%VMA`;
-      steps.push({ t: 'qual', d: cappedMin, txt: `Tempo long · ${cappedMin}min @ ${label} · ${fmtSpeed(speed)} · ${pacePer}/km` });
+      steps.push({ t: 'qual', d: cappedMin, txt: `Tempo long · ${fmtDurMin(cappedMin)} @ ${label} · ${fmtSpeed(speed)} · ${pacePer}/km` });
       break;
     }
 
@@ -4817,7 +4817,7 @@ function buildSessHTML(sess,wn,si){
   const totalMin = sess.totalMin != null ? sess.totalMin : (sess.dur != null ? sess.dur : 0);
   if(!sess.steps || !sess.steps.length){
     const descTxt=sess.desc||sess.label||'';
-    const durTxt=totalMin>0?(totalMin>=60?Math.floor(totalMin/60)+'h'+(totalMin%60?String(Math.round(totalMin%60)).padStart(2,'0'):''):Math.round(totalMin)+' min'):'';
+    const durTxt=totalMin>0?fmtDurMin(totalMin):'';
     const kmTxt=sess.km>0?sess.km.toFixed(1)+' km':'';
     const stepsSimple=`<div class="sess-step"><div class="ss-dot cool"></div><div class="ss-body"><div class="ss-label" style="white-space:pre-wrap">${descTxt}</div><div class="ss-meta">${kmTxt?`<span class="ss-spd cool">${kmTxt}</span>`:''}${durTxt?`<span class="ss-time">${durTxt}</span>`:''}</div></div></div>`;
     return`<div class="session${isDone?' done':''}" id="sess-${sess.id}">
@@ -4849,12 +4849,8 @@ function buildSessHTML(sess,wn,si){
     } else {
       cls = st.c||'cool';
     }
-    // Affichage durée : < 1 min → secondes, >= 1 min → minutes, >= 60 min → heures
-    const durTxt=st.d>0?(
-      st.d >= 60 ? Math.floor(st.d/60)+'h'+(st.d%60?String(Math.round(st.d%60)).padStart(2,'0'):'') :
-      st.d < 1   ? Math.round(st.d*60)+'s' :
-      Math.round(st.d)+' min'
-    ):'';
+    // Affichage durée : toujours M:SS via fmtDurMin (jamais décimal)
+    const durTxt = st.d > 0 ? fmtDurMin(st.d) : '';
     return`<div class="sess-step">
       <div class="ss-dot ${cls}"></div>
       <div class="ss-body">
@@ -5847,7 +5843,7 @@ function openTL(id){
   TL_STEPS=TL_SESS.steps.map(s=>{const st=cum;cum+=(s.d||0)*60;return{...s,startSec:st,endSec:cum};});
   TL_TOTAL=cum;
   document.getElementById('tlTitle').textContent=TL_SESS.title||TL_SESS.label||SESS_LABELS[TL_SESS.type]||'Séance';
-  document.getElementById('tlTotal').textContent=TL_SESS.type==='vma_test'?'Durée variable · arrête quand tu n\'arrives plus':'Durée : '+Math.round(TL_TOTAL/60)+' min';
+  document.getElementById('tlTotal').textContent=TL_SESS.type==='vma_test'?'Durée variable · arrête quand tu n\'arrives plus':'Durée : '+fmtDurMin(TL_TOTAL/60);
   updateDoneUI(!!DONE[TL_SESS.id]);
   updateTrainBadge();
   renderBar(); renderTLList(-1); updateTLStats();
@@ -5886,11 +5882,34 @@ function stepCls(s){
   if(s.t==='renfo') return 'cool';
   return 'cool';
 }
+// fmtDurMin : convertit des minutes décimales en M:SS (ou Xh MM:SS si >=60min)
+// Utilisé partout où une durée en minutes doit être affichée en texte lisible
+function fmtDurMin(m){
+  if(!m||m<=0) return '';
+  const totalSec = Math.round(m * 60);
+  if(totalSec < 60) return totalSec + 's';
+  const h = Math.floor(totalSec / 3600);
+  const mm = Math.floor((totalSec % 3600) / 60);
+  const ss = totalSec % 60;
+  if(h > 0) return h + 'h' + String(mm).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
+  return mm + ':' + String(ss).padStart(2,'0');
+}
+
 function stepLabel(s){
   if(s.t==='renfo'&&s.exo){
     return s.exo.name+(s.exo.sets?` · ${s.exo.sets}`:'');
   }
-  const raw = s.l||s.txt||'';
+  let raw = s.l||s.txt||'';
+  // Nettoyer les durées décimales résiduelles ex: "· 1.9min" ou "13.64min" → M:SS
+  // (plans générés par d'anciennes versions ou importés avec durées en minutes décimales)
+  raw = raw.replace(/([\d]+\.[\d]+)\s*min\b/g, function(_,v){ return fmtDurMin(parseFloat(v)); });
+  // Nettoyer aussi les durées entières suffixées "min" sans espace → M:SS (ex "30min" → "30:00")
+  // Sauf si c'est dans un contexte de vitesse "min/km" ou "min au kilomètre"
+  raw = raw.replace(/(\d+)\s*min(?!\s*\/|\s*au|\s*de\s*D)(?=\s|$|\)|\·)/g, function(_,v){
+    const n = parseInt(v);
+    if(n < 1 || n > 300) return _; // hors plage plausible → laisser intact
+    return fmtDurMin(n);
+  });
   if(!PREF_PACE) return raw;
   // Convertir toutes les vitesses "X.X km/h" en "M:SS/km" dans le texte affiché
   return raw.replace(/([\d.]+)\s*km\/h/g, (_,v)=>fmtPace(parseFloat(v))+'/km');
@@ -5956,16 +5975,7 @@ function renderTLList(activeIdx){
       row.addEventListener('pointerup',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
       row.addEventListener('pointercancel',()=>{clearTimeout(lpT);row.classList.remove('lp-active');});
       const dMin=s.d||0;
-      const dLbl=(function(m){
-        if(!m) return '';
-        const totalSec=Math.round(m*60);
-        if(totalSec<60) return totalSec+'s';
-        const h=Math.floor(totalSec/3600);
-        const mm=Math.floor((totalSec%3600)/60);
-        const ss=totalSec%60;
-        if(h>0) return h+'h'+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0');
-        return mm+':'+String(ss).padStart(2,'0');
-      })(dMin);
+      const dLbl=fmtDurMin(dMin); // M:SS via fmtDurMin — jamais décimal
       const sCls=stepCls(s);
       row.innerHTML=`<div class="tl-times"><span class="t-start">${fmtSec(s.startSec)}</span>${dLbl?`<br><span style="font-size:10px">${dLbl}</span>`:''}<br>${s.d?fmtSec(s.endSec):''}</div>
       <div class="tl-dot-col"><div class="tl-dot ${sCls}"></div>${i<TL_STEPS.length-1?`<div class="tl-line ${sCls}"></div>`:''}</div>
@@ -7622,7 +7632,7 @@ function saveEditStep(){
   let cum=0;
   TL_STEPS.forEach(st=>{st.startSec=cum;cum+=(st.d||0)*60;st.endSec=cum;});
   TL_TOTAL=cum;
-  document.getElementById('tlTotal').textContent='Durée : '+Math.round(TL_TOTAL/60)+' min';
+  document.getElementById('tlTotal').textContent='Durée : '+fmtDurMin(TL_TOTAL/60);
   renderBar(); renderTLList(_curStep>=0?_curStep:-1); updateTLStats();
   // Relancer preload voix avec les nouveaux textes
   if(_voiceEnabled) preloadVoice(TL_STEPS);
@@ -7833,10 +7843,10 @@ function exportOfflineHTML(){
       const sessLabel = SESS_LABELS_LO[s.type] || s.type;
       let stepsHtml = '';
       (s.steps||[]).forEach(st => {
-        const _sdur = st.d ? (st.d < 1 ? Math.round(st.d*60)+'s' : Math.round(st.d)+'min') : '';
+        const _sdur = st.d ? fmtDurMin(st.d) : '';
         stepsHtml += `<li>${st.l||''} <span class="dur">${_sdur}</span> <span class="pace">${st.p||''}</span></li>`;
       });
-      sessHtml += `<div class="sess sess-${s.type}"><div class="sess-title">${sessLabel} — ${s.title||''} <span class="sess-dur">${s.totalMin||0} min</span></div><ul>${stepsHtml}</ul></div>`;
+      sessHtml += `<div class="sess sess-${s.type}"><div class="sess-title">${sessLabel} — ${s.title||''} <span class="sess-dur">${fmtDurMin(s.totalMin||0)}</span></div><ul>${stepsHtml}</ul></div>`;
     });
     weeksHtml += `<div class="week ${w.isDecharge?'week-recup':w.isTaper?'week-taper':''}">
       <div class="week-hdr">
@@ -8114,7 +8124,7 @@ function exportICS(){
   if(!TL_SESS)return;
   document.getElementById('icsSessName').textContent=TL_SESS.title||TL_SESS.label||'Séance';
   document.getElementById('icsDate').value=isoDate(new Date());
-  document.getElementById('icsDur').textContent=`Durée estimée : ${TL_SESS.totalMin||TL_SESS.dur||0} min`;
+  document.getElementById('icsDur').textContent=`Durée estimée : ${fmtDurMin(TL_SESS.totalMin||TL_SESS.dur||0)}`;
   document.getElementById('icsOverlay').classList.add('open');
 }
 function closeICS(){document.getElementById('icsOverlay').classList.remove('open');}
@@ -8127,7 +8137,7 @@ function confirmICS(){
     'UID:rp-'+TL_SESS.id+'-'+Date.now()+'@runplan','DTSTAMP:'+ics8(new Date()),
     'DTSTART:'+ics8(startDt),'DTEND:'+ics8(endDt),
     'SUMMARY:🏃 '+TL_SESS.title,
-    'DESCRIPTION:'+TL_SESS.steps.map(s=>`${s.l||s.txt||''} (${s.d < 1 ? Math.round(s.d*60)+'s' : Math.round(s.d)+' min'})`).join('\\n'),
+    'DESCRIPTION:'+TL_SESS.steps.map(s=>`${s.l||s.txt||''} (${fmtDurMin(s.d)})`).join('\\n'),
     'END:VEVENT','END:VCALENDAR'].join('\r\n');
   const blob=new Blob([ics],{type:'text/calendar'});
   const fname='rp-'+TL_SESS.id+'.ics';
