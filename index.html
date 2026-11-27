@@ -2147,7 +2147,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.5";
+const GENERATOR_VERSION = "130.6";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -2872,14 +2872,16 @@ function longRunSchedule(nWeeks, dist, goalSec) {
 
   // Fix v130 — Cap SL à 85% du temps de course cible (Pfitzinger/Daniels)
   // Principe : la SL ne doit jamais dépasser 85% de la durée de la compétition cible
-  // Ex: 4h15 marathon = 255 min → cap = 255 × 0.85 = 216 min  (jamais atteint pour marathon)
-  // Ex: semi 2h = 120 min → cap = 102 min (réduit le pic de 110 à 102)
-  // Pour marathon (peakMin=160) le cap naturel est toujours supérieur → effet surtout semi/10km
+  // Fix v130.5 — aussi capper basMin : pour 5km en 30min, basMin=35 > 85%×30=25min
   if (goalSec > 0) {
     const goalMin = goalSec / 60;
-    peakMin = Math.min(peakMin, Math.round(goalMin * 0.85));
-    // Garantir que peakMin reste au moins le basMin + un palier minimal
-    peakMin = Math.max(peakMin, basMin + 10);
+    const cap85 = Math.round(goalMin * 0.85);
+    // Cap le pic
+    peakMin = Math.min(peakMin, cap85);
+    // Cap aussi la base si elle dépasse le cap (cas 5km/10km lent)
+    basMin = Math.min(basMin, Math.max(cap85 - 5, 15)); // jamais sous 15min
+    // Garantir que peakMin reste au moins basMin + un palier minimal de 5min
+    peakMin = Math.max(peakMin, basMin + 5);
   }
 
   // v88 fix — éviter deux SL consécutives au pic (150+150min → 135+150min)
@@ -3406,7 +3408,7 @@ function selectFracType(phase, qualIdx, vma, index, dist, nWeeks, phaseConfig, w
 // -----------------------------------------------------------------------
 // 9. CONSTRUCTION DE LA SEMAINE (nouveau moteur)
 // -----------------------------------------------------------------------
-function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withCotes, phaseConfig, qualIdx, targetVolKm) {
+function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withCotes, phaseConfig, qualIdx, targetVolKm, slPeakMin) {
   const phase = getWeekPhase(wIdx, phaseConfig);
   const isDecharge = isDechargeWeek(wIdx, phaseConfig.workW, phase);
   const isTaper = phase === 'taper';
@@ -3561,8 +3563,11 @@ function buildWeek(wIdx, Z, nSessions, longMin, dist, allureCible, nWeeks, withC
       if (sessions.length < effectiveSessions - 1) {
         sessions.push({ type:'footing', title:'Footing endurance', steps: footingSteps(Z, 30) });
       }
-      // 4. Sortie longue affûtage — volume réduit S-2 (Pfitzinger : -30% vs semaine pic)
-      const slTaperMin = dist >= 42 ? 75 : 60;
+      // 4. Sortie longue affûtage — volume réduit S-2 (Pfitzinger : ~50% du pic SL, min 20min)
+      // Fix v130.5 — slTaperMin calculé depuis le pic réel et non fixé à 60/75min
+      // Évite que la SL taper > SL P3 (bug 10km : pic=44min, taper=60min → incohérent)
+      const _slPk = slPeakMin || (dist >= 42 ? 150 : dist >= 21.2 ? 100 : 55);
+      const slTaperMin = Math.max(20, Math.round(_slPk * (dist >= 42 ? 0.50 : 0.55)));
       sessions.push({ type:'long', title:'Sortie longue affûtage', steps: longRunSteps(Z, slTaperMin, 0, qualIdx, null) });
       // FIX2: 1 séance renfo légère (core) maintenue en S-2 — recommandation médecin sport
       sessions.push(mkRenfo(true));
@@ -3800,6 +3805,7 @@ function generateProgram(){
   const raceMonday = mondayOf(Q.raceDate);
   const nWeeks = Math.max(1, Math.round((raceMonday-progStart)/(7*864e5))+1);
   const longSched = longRunSchedule(nWeeks, Q.dist, gs); // Fix v130: passer goalSec pour cap 85%
+  const slPeakMin = Math.max(1, ...longSched.filter(x=>x>0)); // Fix v130.5: pic SL réel pour calcul taper
   const phaseConfig = calcPhaseDurations(nWeeks, Q.dist, index, allureCible); // Fix v130: taper adapté au niveau
   // v67 — calcVolumeSchedule connecté : volumes cibles réels par semaine
   const weekVols = calcVolumeSchedule(nWeeks, Q.volume||null, phaseConfig, Q.dist, index);
@@ -3869,7 +3875,7 @@ function generateProgram(){
       }
       sessions=s;
     } else {
-      sessions=buildWeek(i,Z,Q.days,longMin,Q.dist,allureCible,nWeeks,withCotes,phaseConfig,qualIdx,weekVols[i]||0);
+      sessions=buildWeek(i,Z,Q.days,longMin,Q.dist,allureCible,nWeeks,withCotes,phaseConfig,qualIdx,weekVols[i]||0,slPeakMin);
       if(!isDecharge && !isTaper) qualIdx++;
     }
 
