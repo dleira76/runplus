@@ -2164,7 +2164,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.9";
+const GENERATOR_VERSION = "130.10";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4020,6 +4020,10 @@ function loadLibrary(){try{return JSON.parse(localStorage.getItem('rp_library')|
 function saveLibrary(lib){
   try{
     localStorage.setItem('rp_library',JSON.stringify(lib));
+    // Maintenir rp_prog comme copie de secours du programme actif/star (Android fallback)
+    var aId=getStarId()||getActiveId();
+    if(aId){var ae=lib.find(function(e){return e.id===aId;});if(ae&&ae.prog)saveProg(ae.prog);}
+
   } catch(e){
     // QuotaExceededError : élaguer la lib (garder star + active + 2 plus récents)
     try {
@@ -4271,6 +4275,8 @@ function saveNewProgToLibrary(p){
   }
 
   saveLibrary(lib);
+  // Copie de secours dans rp_prog (fallback si rp_library est perdu sur Android)
+  saveProg(p);
   DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
 }
 
@@ -8284,6 +8290,20 @@ function openPartialQuestionnaire(saved, missingFields){
   // Déterminer quel programme ouvrir au démarrage
   var starId = getStarId();
   var lib = loadLibrary();
+
+  // Fallback : si la lib est vide mais rp_prog existe (Android peut vider le localStorage partiellement),
+  // reconstruire la lib depuis rp_prog
+  if(lib.length === 0){
+    var fallback = loadProg();
+    if(fallback && fallback.weeks){
+      var fbId = 'prog_recovered';
+      lib = [{id: fbId, prog: fallback, done: {}, train: {}, history: []}];
+      saveLibrary(lib);
+      setActiveId(fbId);
+      setStarId(fbId);
+      starId = fbId;
+    }
+  }
 
   // Programme favori défini → lancer directement
   if(starId){
