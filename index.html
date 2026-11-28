@@ -574,6 +574,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     <div style="display:flex;gap:6px">
       <button id="renfo-cnt-1" onclick="setRenfoCount(1)" style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">1</button>
       <button id="renfo-cnt-2" onclick="setRenfoCount(2)" style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">2</button>
+      <button id="renfo-cnt-3" onclick="setRenfoCount(3)" style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">3</button>
     </div>
   </div>
   <div style="padding:12px 16px 14px;border-top:1px solid var(--border)">
@@ -2163,7 +2164,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.7";
+const GENERATOR_VERSION = "130.8";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -8407,10 +8408,12 @@ function _updateRenfoSwitch(){
   // Boutons actif/inactif
   const b1 = document.getElementById('renfo-cnt-1');
   const b2 = document.getElementById('renfo-cnt-2');
+  const b3 = document.getElementById('renfo-cnt-3');
   const activeStyle = 'padding:5px 14px;border-radius:8px;border:1.5px solid var(--accent,#4f7af8);background:var(--accent,#4f7af8);color:#fff;font-size:14px;font-weight:600;cursor:pointer';
   const inactiveStyle = 'padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer';
   if(b1) b1.style.cssText = _renfoCountPref === 1 ? activeStyle : inactiveStyle;
   if(b2) b2.style.cssText = _renfoCountPref === 2 ? activeStyle : inactiveStyle;
+  if(b3) b3.style.cssText = _renfoCountPref === 3 ? activeStyle : inactiveStyle;
 }
 
 // Génère N séances renfo à la volée pour une semaine importée
@@ -8420,11 +8423,11 @@ function makeImportedRenfoSessions(wkNum, wkPhase, nRenfo, totalWeeks){
   const isDecharge = phase === 'recup';
   const isTaper = phase === 'taper';
   if(isDecharge) return []; // pas de renfo en décharge
-  const nActual = isTaper ? Math.min(1, nRenfo) : nRenfo;
+  const nActual = isTaper ? Math.min(1, nRenfo) : Math.min(nRenfo, 3);
   const weekInPhase = wkNum <= 4 ? wkNum : ((wkNum - 1) % 4) + 1;
   const result = [];
   for(let i = 0; i < nActual; i++){
-    const light = isTaper || i > 0; // 2e séance = légère (core)
+    const light = isTaper || i > 0; // 2e et 3e séance = légères (core)
     let rSteps;
     if(light){
       const coreExos = RENFO_LIB.filter(e => e.cat === 'core').slice(0, 2);
@@ -8436,7 +8439,7 @@ function makeImportedRenfoSessions(wkNum, wkPhase, nRenfo, totalWeeks){
       rSteps = renfoSteps(phase, 0, isTaper, weekInPhase);
     }
     const totalD = rSteps.reduce((s,st) => s + (st.d||0), 0);
-    const note = light && nActual > 1 ? ' (léger)' : '';
+    const note = light && nActual > 1 ? (i === nActual - 1 && nActual === 3 ? ' (mobilité)' : ' (léger)') : '';
     result.push({
       type:'renfo',
       title:'Renforcement musculaire' + note,
