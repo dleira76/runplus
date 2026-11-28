@@ -2164,7 +2164,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.8";
+const GENERATOR_VERSION = "130.9";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4017,7 +4017,32 @@ function generatePlan(){
 // Clé rp_star    : id du programme favori (lancé automatiquement)
 // =======================================================================
 function loadLibrary(){try{return JSON.parse(localStorage.getItem('rp_library')||'[]');}catch(e){return[];}}
-function saveLibrary(lib){try{localStorage.setItem('rp_library',JSON.stringify(lib));}catch(e){}}
+function saveLibrary(lib){
+  try{
+    localStorage.setItem('rp_library',JSON.stringify(lib));
+  } catch(e){
+    // QuotaExceededError : élaguer la lib (garder star + active + 2 plus récents)
+    try {
+      var starId=getStarId(), activeId=getActiveId();
+      var priority=new Set([starId,activeId].filter(Boolean));
+      var kept=lib.filter(function(e){return priority.has(e.id);});
+      var rest=lib.filter(function(e){return !priority.has(e.id);}).slice(0,2);
+      var trimmed=kept.concat(rest);
+      localStorage.setItem('rp_library',JSON.stringify(trimmed));
+      console.warn('rp_library élagué (quota), '+trimmed.length+'/'+lib.length+' programmes conservés');
+    } catch(e2){
+      // Toujours trop gros : sauver uniquement le programme actif
+      try {
+        var aId=getActiveId();
+        var sole=lib.filter(function(e){return e.id===aId||e.id===getStarId();}).slice(0,1);
+        if(sole.length) localStorage.setItem('rp_library',JSON.stringify(sole));
+      } catch(e3){
+        console.error('saveLibrary: impossible de sauvegarder (localStorage plein)',e3);
+        setTimeout(function(){toast('⚠️ Stockage plein — programme non sauvegardé. Libérez de l\'espace dans les réglages du navigateur.');},200);
+      }
+    }
+  }
+}
 function getActiveId(){try{return localStorage.getItem('rp_active')||null;}catch(e){return null;}}
 function setActiveId(id){try{if(id)localStorage.setItem('rp_active',id);else localStorage.removeItem('rp_active');}catch(e){}}
 function getStarId(){try{return localStorage.getItem('rp_star')||null;}catch(e){return null;}}
@@ -4132,6 +4157,8 @@ function homeOpenProg(id){
   DONE = entry.done || {};
   TRAIN_DATA = entry.train || {};
   RACE_HISTORY = entry.history || [];
+  // Hydrater les programmes externes (importés) avant affichage
+  if(PROG._source || !PROG.generatorVersion) PROG = _hydrateExternalProg(PROG);
   renderPlan(PROG);
   showScreen('screen-plan');
 }
@@ -8150,11 +8177,12 @@ function loadFile(e){
           renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
         }
       } else {
-        // Programme externe : hydrater les séances (steps + vitesses Z) puis afficher
-        PROG = _hydrateExternalProg(PROG);
-        saveProg(PROG);
-        try { saveNewProgToLibrary(PROG); } catch(e2){ console.error('saveNewProgToLibrary error:',e2); }
+        // Programme externe : sauvegarder le JSON brut (compact) dans la lib, hydrater seulement en mémoire
+        const rawProg = PROG; // JSON brut avant hydratation (plus compact)
+        saveProg(rawProg);
+        try { saveNewProgToLibrary(rawProg); } catch(e2){ console.error('saveNewProgToLibrary error:',e2); }
         var aid3=getActiveId();setStarId(aid3);
+        PROG = _hydrateExternalProg(rawProg); // hydrater pour l'affichage, sans écraser la lib
         try { renderPlan(PROG); } catch(e2){ console.error('renderPlan error:',e2); alert('Erreur rendu : '+e2.message); return; }
         showScreen('screen-plan');toast('Programme importé ✓');
       }
@@ -8285,6 +8313,9 @@ function openPartialQuestionnaire(saved, missingFields){
           }
         } catch(e){}
       }
+      // Hydrater les programmes externes (importés sans generatorVersion) avant affichage
+      var isImportedAtLoad = !!PROG._source || !PROG.generatorVersion;
+      if(isImportedAtLoad) PROG = _hydrateExternalProg(PROG);
       renderPlan(PROG);
       showScreen('screen-plan');
       return;
