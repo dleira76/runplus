@@ -15,7 +15,7 @@ function loadScript(src){ var s=document.createElement('script'); s.src=src; s.a
 window.addEventListener('DOMContentLoaded',function(){
   loadScript('https://code.responsivevoice.org/responsivevoice.js?key=FREE');
   loadScript('https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js');
-  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();_updateHrSwitch();_loadHrProfileInputs();}, 50);
+  setTimeout(()=>{_updateEncourageSwitch();_updateGpsSwitch();_updateHrSwitch();_updateRenfoSwitch();_loadHrProfileInputs();}, 50);
   // Restaurer un résultat de test VMA non appliqué (app fermée avant confirmation)
   setTimeout(()=>{
     try{
@@ -559,6 +559,22 @@ body{font-family:var(--font);background:var(--bg);color:var(--fg);font-size:14px
     <button id="hr-switch" class="tog" onclick="hrToggle()">
       <span class="tog-knob" id="hr-knob"></span>
     </button>
+  </div>
+  <div class="home-switch-row">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="home-switch-label">💪 Renforcement musculaire</span>
+      <span id="renfo-switch-lbl" class="home-switch-sublbl"></span>
+    </div>
+    <button id="renfo-switch" class="tog" onclick="renfoToggle()">
+      <span class="tog-knob" id="renfo-knob"></span>
+    </button>
+  </div>
+  <div id="renfo-count-row" style="display:none;padding:8px 16px 10px;border-top:1px solid var(--border);align-items:center;gap:10px">
+    <span style="font-size:13px;color:var(--fg-muted);flex:1">Séances par semaine</span>
+    <div style="display:flex;gap:6px">
+      <button id="renfo-cnt-1" onclick="setRenfoCount(1)" style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">1</button>
+      <button id="renfo-cnt-2" onclick="setRenfoCount(2)" style="padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer">2</button>
+    </div>
   </div>
   <div style="padding:12px 16px 14px;border-top:1px solid var(--border)">
     <div style="font-size:12px;font-weight:700;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Zones cardiaques</div>
@@ -2147,7 +2163,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.6";
+const GENERATOR_VERSION = "130.7";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4646,6 +4662,9 @@ function renderPlan(prog){
   buildPlanChart(weeks, Z);
 
   const body=document.getElementById('planBody'); body.innerHTML='';
+  // Détecter si plan importé (non généré nativement par l'app)
+  const isImportedPlan = !!prog._source || !prog.generatorVersion;
+
   weeks.forEach((wk,wi)=>{
     const card=document.createElement('div');
     card.className='week-card';
@@ -4653,6 +4672,18 @@ function renderPlan(prog){
     const phaseLabel={phase1:'Fondation',phase2:'Developpement',phase3:'Specifique',spec:'Preparation',taper:'Affutage',recup:'Recuperation',race:'Course',preprace:'Course test'}[wk.phase]||'Preparation';
     const badgeCls='w-badge'+({taper:' taper',recup:' recup',race:' race',phase1:'',phase2:'',phase3:'',spec:'',preprace:''}[wk.phase]||'');
     const shortDate=d=>{if(!d)return'';const dt=new Date(d+'T12:00:00');const mo=['jan','fev','mar','avr','mai','juin','juil','aout','sep','oct','nov','dec'][dt.getMonth()];return dt.getDate()+' '+mo;};
+
+    // Séances à afficher : sessions originales + renfo injectés à la volée si switch activé
+    let displaySessions = wk.sessions;
+    if(_renfoSwitchEnabled && isImportedPlan){
+      const injected = makeImportedRenfoSessions(wk.num, wk.phase, _renfoCountPref, weeks.length);
+      if(injected.length > 0){
+        // Attribuer des IDs temporaires pour le rendu (non persistés)
+        injected.forEach((s,i) => { s.id = `w${wk.num}renfo${i+1}_inj`; });
+        displaySessions = [...wk.sessions, ...injected];
+      }
+    }
+
     card.innerHTML=`<div class="week-hdr" onclick="toggleWk(${wk.num})">
       <div class="w-num">SEMAINE<span>${String(wk.num).padStart(2,'0')}</span></div>
       <div class="w-info">
@@ -4661,7 +4692,7 @@ function renderPlan(prog){
       </div>
       <div class="w-chevron">&#9650;</div>
     </div>
-    <div class="week-sessions" id="wss${wk.num}">${wk.sessions.map((s,si)=>buildSessHTML(s,wk.num,si)).join('')}</div>`;
+    <div class="week-sessions" id="wss${wk.num}">${displaySessions.map((s,si)=>buildSessHTML(s,wk.num,si)).join('')}</div>`;
     body.appendChild(card);
   });
 
@@ -8344,6 +8375,78 @@ let _hrTimes = [];      // timestamps (sec) où annoncer la prise de mesure
 let _hrLabels = [];     // libellés correspondants
 let _hrFired = [];      // booléens : annonce déjà faite ?
 let _hrPendingId = null; // id de la séance en attente de saisie FC
+
+// =======================================================================
+// RENFORCEMENT MUSCULAIRE — switch persistant + sélecteur 1/2 séances
+// =======================================================================
+let _renfoSwitchEnabled = (localStorage.getItem('rp_renfo_switch') === 'true');
+let _renfoCountPref = parseInt(localStorage.getItem('rp_renfo_count') || '1', 10);
+if (_renfoCountPref < 1 || _renfoCountPref > 2) _renfoCountPref = 1;
+
+function renfoToggle(){
+  _renfoSwitchEnabled = !_renfoSwitchEnabled;
+  localStorage.setItem('rp_renfo_switch', _renfoSwitchEnabled ? 'true' : 'false');
+  _updateRenfoSwitch();
+  if(PROG) renderPlan(PROG);
+}
+function setRenfoCount(n){
+  _renfoCountPref = n;
+  localStorage.setItem('rp_renfo_count', String(n));
+  _updateRenfoSwitch();
+  if(PROG) renderPlan(PROG);
+}
+function _updateRenfoSwitch(){
+  const sw = document.getElementById('renfo-switch');
+  const lbl = document.getElementById('renfo-switch-lbl');
+  const knob = document.getElementById('renfo-knob');
+  const row = document.getElementById('renfo-count-row');
+  if(sw) sw.classList.toggle('on', _renfoSwitchEnabled);
+  if(knob) knob.style.transform = _renfoSwitchEnabled ? 'translateX(20px)' : '';
+  if(lbl) lbl.textContent = _renfoSwitchEnabled ? 'Activé' : 'Désactivé';
+  if(row) row.style.display = _renfoSwitchEnabled ? 'flex' : 'none';
+  // Boutons actif/inactif
+  const b1 = document.getElementById('renfo-cnt-1');
+  const b2 = document.getElementById('renfo-cnt-2');
+  const activeStyle = 'padding:5px 14px;border-radius:8px;border:1.5px solid var(--accent,#4f7af8);background:var(--accent,#4f7af8);color:#fff;font-size:14px;font-weight:600;cursor:pointer';
+  const inactiveStyle = 'padding:5px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;font-weight:600;cursor:pointer';
+  if(b1) b1.style.cssText = _renfoCountPref === 1 ? activeStyle : inactiveStyle;
+  if(b2) b2.style.cssText = _renfoCountPref === 2 ? activeStyle : inactiveStyle;
+}
+
+// Génère N séances renfo à la volée pour une semaine importée
+// Utilise les mêmes fonctions que buildWeek (renfoSteps, selectRenfoExos, progressRenfoExo)
+function makeImportedRenfoSessions(wkNum, wkPhase, nRenfo, totalWeeks){
+  const phase = wkPhase || 'phase1';
+  const isDecharge = phase === 'recup';
+  const isTaper = phase === 'taper';
+  if(isDecharge) return []; // pas de renfo en décharge
+  const nActual = isTaper ? Math.min(1, nRenfo) : nRenfo;
+  const weekInPhase = wkNum <= 4 ? wkNum : ((wkNum - 1) % 4) + 1;
+  const result = [];
+  for(let i = 0; i < nActual; i++){
+    const light = isTaper || i > 0; // 2e séance = légère (core)
+    let rSteps;
+    if(light){
+      const coreExos = RENFO_LIB.filter(e => e.cat === 'core').slice(0, 2);
+      rSteps = coreExos.map(e => {
+        const prog = progressRenfoExo(e, weekInPhase, phase);
+        return {t:'renfo', d:estimateRenfoDur(prog), txt:prog.name, exo:prog};
+      });
+    } else {
+      rSteps = renfoSteps(phase, 0, isTaper, weekInPhase);
+    }
+    const totalD = rSteps.reduce((s,st) => s + (st.d||0), 0);
+    const note = light && nActual > 1 ? ' (léger)' : '';
+    result.push({
+      type:'renfo',
+      title:'Renforcement musculaire' + note,
+      steps: rSteps,
+      totalMin: totalD,
+      _injected: true // marqueur pour ne pas persister dans le JSON
+    });
+  }
+  return result;
+}
 
 function hrToggle(){
   _hrEnabled=!_hrEnabled;
