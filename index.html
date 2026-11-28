@@ -2164,7 +2164,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.10";
+const GENERATOR_VERSION = "130.11";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -4005,7 +4005,8 @@ function generatePlan(){
   Q._goalConfirmed=false;
   PROG=generateProgram();
   saveProg(PROG);
-  saveNewProgToLibrary(PROG); // enregistrer dans la librairie Home
+  var newSid=saveNewProgToLibrary(PROG); // enregistrer dans la librairie Home
+  if(newSid) setStarId(newSid);
   renderPlan(PROG);
   showScreen('screen-plan');
 }
@@ -4234,14 +4235,15 @@ function saveCurrentProgToLibrary(){
 // Hook : après génération d'un nouveau programme, l'enregistrer dans la librairie
 // Si rp_pending_new_id est défini, on l'utilise comme ID (créé par homeNewPlan)
 // Sinon on crée un nouvel ID (génération directe sans passer par la Home)
+// Sauvegarde p dans la bibliothèque et retourne l'id final (jamais null)
 function saveNewProgToLibrary(p){
-  if(!p || !p.weeks) return;
+  if(!p || !p.weeks) return null;
   var lib = loadLibrary();
+  var targetId = null;
   var pendingId;
   try { pendingId = localStorage.getItem('rp_pending_new_id'); } catch(e){}
 
   if(pendingId){
-    // Chercher si cet ID existe déjà (ne devrait pas, mais sécurité)
     var existIdx = lib.findIndex(function(e){ return e.id === pendingId; });
     if(existIdx >= 0){
       lib[existIdx].prog = p;
@@ -4251,10 +4253,9 @@ function saveNewProgToLibrary(p){
     } else {
       lib.unshift({ id: pendingId, prog: p, done: {}, train: {}, history: [] });
     }
-    setActiveId(pendingId);
+    targetId = pendingId;
     try { localStorage.removeItem('rp_pending_new_id'); } catch(e){}
   } else {
-    // Vérifier si activeId courant existe déjà dans la lib (édition d'un prog existant)
     var activeId = getActiveId();
     if(activeId){
       var idx = lib.findIndex(function(e){ return e.id === activeId; });
@@ -4263,21 +4264,21 @@ function saveNewProgToLibrary(p){
         lib[idx].done = {};
         lib[idx].train = {};
         lib[idx].history = [];
-        saveLibrary(lib);
-        DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
-        return;
+        targetId = activeId;
       }
     }
-    // Vraiment nouveau
-    var newId = 'prog_' + Date.now();
-    lib.unshift({ id: newId, prog: p, done: {}, train: {}, history: [] });
-    setActiveId(newId);
+    if(!targetId){
+      var newId = 'prog_' + Date.now();
+      lib.unshift({ id: newId, prog: p, done: {}, train: {}, history: [] });
+      targetId = newId;
+    }
   }
 
+  setActiveId(targetId);
   saveLibrary(lib);
-  // Copie de secours dans rp_prog (fallback si rp_library est perdu sur Android)
-  saveProg(p);
+  saveProg(p); // copie de secours Android
   DONE = {}; TRAIN_DATA = {}; RACE_HISTORY = [];
+  return targetId;
 }
 
 // =======================================================================
@@ -6768,7 +6769,7 @@ function applyFeedbackAdjustments(fb, sessId, actualPaceMin){
 function clearProgFlag(flag){
   if(!PROG) return;
   delete PROG[flag];
-  saveProg();
+  saveProg(PROG);
   renderPlan(PROG);
 }
 
@@ -8174,21 +8175,17 @@ function loadFile(e){
           saveProg(newProg);
           PROG = newProg;
           const wasUpdated = payload.prog.generatorVersion !== GENERATOR_VERSION;
-          saveNewProgToLibrary(PROG);
-          var aid1=getActiveId();setStarId(aid1);
+          var sid1=saveNewProgToLibrary(PROG);if(sid1)setStarId(sid1);
           renderPlan(newProg);showScreen('screen-plan');toast(wasUpdated ? '🔄 Programme mis à jour v'+GENERATOR_VERSION+' ✓' : 'Chargé ✓');
         } catch(e) {
-          saveNewProgToLibrary(PROG);
-          var aid2=getActiveId();setStarId(aid2);
+          var sid2=saveNewProgToLibrary(PROG);if(sid2)setStarId(sid2);
           renderPlan(PROG);showScreen('screen-plan');toast('Chargé ✓');
         }
       } else {
         // Programme externe : sauvegarder le JSON brut (compact) dans la lib, hydrater seulement en mémoire
-        const rawProg = PROG; // JSON brut avant hydratation (plus compact)
-        saveProg(rawProg);
-        try { saveNewProgToLibrary(rawProg); } catch(e2){ console.error('saveNewProgToLibrary error:',e2); }
-        var aid3=getActiveId();setStarId(aid3);
-        PROG = _hydrateExternalProg(rawProg); // hydrater pour l'affichage, sans écraser la lib
+        var rawProg = PROG; // JSON brut avant hydratation
+        var sid3=saveNewProgToLibrary(rawProg);if(sid3)setStarId(sid3);
+        PROG = _hydrateExternalProg(rawProg); // hydrater pour l'affichage, sans modifier la lib
         try { renderPlan(PROG); } catch(e2){ console.error('renderPlan error:',e2); alert('Erreur rendu : '+e2.message); return; }
         showScreen('screen-plan');toast('Programme importé ✓');
       }
