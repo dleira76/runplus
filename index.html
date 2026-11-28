@@ -10,6 +10,85 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>RunPlan — Coach</title>
 <script>
+// =======================================================================
+// STOCKAGE PERSISTANT — IndexedDB comme couche durable sous localStorage
+// Android peut vider localStorage à tout moment ; IndexedDB est résistant.
+// Toutes les clés critiques sont écrites dans les deux stores en parallèle.
+// Au démarrage, si localStorage est vide, on restaure depuis IndexedDB.
+// =======================================================================
+var _idb = null;
+var _IDB_NAME = 'runplan_store', _IDB_VER = 1, _IDB_STORE = 'kv';
+
+function _idbOpen(cb){
+  if(_idb){ cb(_idb); return; }
+  try {
+    var req = indexedDB.open(_IDB_NAME, _IDB_VER);
+    req.onupgradeneeded = function(e){ e.target.result.createObjectStore(_IDB_STORE); };
+    req.onsuccess = function(e){ _idb = e.target.result; cb(_idb); };
+    req.onerror = function(){ cb(null); };
+  } catch(e){ cb(null); }
+}
+
+function idbSet(key, value){
+  _idbOpen(function(db){
+    if(!db) return;
+    try {
+      var tx = db.transaction(_IDB_STORE, 'readwrite');
+      tx.objectStore(_IDB_STORE).put(value, key);
+    } catch(e){}
+  });
+}
+
+function idbGet(key, cb){
+  _idbOpen(function(db){
+    if(!db){ cb(null); return; }
+    try {
+      var tx = db.transaction(_IDB_STORE, 'readonly');
+      var req = tx.objectStore(_IDB_STORE).get(key);
+      req.onsuccess = function(){ cb(req.result !== undefined ? req.result : null); };
+      req.onerror = function(){ cb(null); };
+    } catch(e){ cb(null); }
+  });
+}
+
+// Surcharger localStorage pour les clés critiques : écriture → les deux stores
+var _LS_CRITICAL = ['rp_library','rp_star','rp_active','rp_prog','rp_done','rp_train','rp_history'];
+var _lsSetItem_orig = localStorage.setItem.bind(localStorage);
+var _lsRemoveItem_orig = localStorage.removeItem.bind(localStorage);
+localStorage.setItem = function(k, v){
+  _lsSetItem_orig(k, v);
+  if(_LS_CRITICAL.indexOf(k) >= 0) idbSet(k, v);
+};
+localStorage.removeItem = function(k){
+  _lsRemoveItem_orig(k);
+  if(_LS_CRITICAL.indexOf(k) >= 0) idbSet(k, null);
+};
+
+// Restaurer depuis IndexedDB si localStorage est vide (Android a tout effacé)
+// Appelé avant init(), retourne une Promise
+function _restoreFromIDB(){
+  return new Promise(function(resolve){
+    // Si au moins rp_library est présent et non vide, localStorage est OK
+    var lib = null;
+    try { lib = JSON.parse(localStorage.getItem('rp_library')||'[]'); } catch(e){}
+    if(lib && lib.length > 0){ resolve(); return; }
+    // localStorage vide → restaurer les clés critiques depuis IndexedDB
+    var keys = _LS_CRITICAL.slice();
+    var i = 0;
+    function next(){
+      if(i >= keys.length){ resolve(); return; }
+      var k = keys[i++];
+      idbGet(k, function(val){
+        if(val !== null){
+          try { _lsSetItem_orig(k, val); } catch(e){}
+        }
+        next();
+      });
+    }
+    next();
+  });
+}
+
 // Chargement non-bloquant des libs externes
 function loadScript(src){ var s=document.createElement('script'); s.src=src; s.async=true; document.head.appendChild(s); }
 window.addEventListener('DOMContentLoaded',function(){
@@ -2164,7 +2243,7 @@ function togglePaceUnit(){
 // Principe: AUCUNE table de lookup copiée — tout est calculé
 //           en fonction de (VMA, phase, semaine, distance, index)
 // =======================================================================
-const GENERATOR_VERSION = "130.11";
+const GENERATOR_VERSION = "130.12";
 
 // =======================================================================
 // BIBLIOTHÈQUE RENFORCEMENT MUSCULAIRE
@@ -8280,7 +8359,10 @@ function openPartialQuestionnaire(saved, missingFields){
   }
 }
 
-(function init(){
+// Lancer init() après restauration IDB (async, transparent)
+_restoreFromIDB().then(function(){ _runInit(); });
+
+function _runInit(){
   // Migration : si rp_prog existe et pas encore de librairie, migrer
   migrateOldProg();
 
@@ -8398,7 +8480,7 @@ function openPartialQuestionnaire(saved, missingFields){
     renderPlan(saved);
     showScreen('screen-plan');
   }
-})();
+}
 </script>
 <script>
 if('serviceWorker' in navigator) {
@@ -8412,6 +8494,14 @@ if('serviceWorker' in navigator) {
   // Recharger automatiquement quand le SW signale une mise à jour
   navigator.serviceWorker.addEventListener('message', e => {
     if(e.data && e.data.type === 'SW_UPDATED') window.location.reload();
+  });
+}
+
+// Demander la persistence du storage au navigateur (critique sur Android/PWA)
+// Sans ça, le navigateur peut vider le localStorage à chaque fermeture
+if(navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().then(granted => {
+    if(!granted) console.warn('RunPlan: storage persistence refusée — les données peuvent être effacées par Android');
   });
 }
 
